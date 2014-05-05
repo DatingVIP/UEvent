@@ -4,6 +4,31 @@ UEvent
 
 This here is an extension to allow users to decare and Zend to fire events at runtime, because delicious ...
 
+Example
+=======
+*How ...*
+
+```php
+<?php
+class foo {
+	public static function bar() {}
+	/* ... */
+}
+
+var_dump(UEvent::addEvent("foo.bar", ["Foo", "bar"]));
+
+var_dump(UEvent::addListener("foo.bar", function(UEventArgs $args = null){
+	echo "hello foo::bar\n";
+}));
+
+foo::bar();
+?>
+```
+
+API
+===
+*The rest ... WIP!!*
+
 ```php
 <?php
 interface UEventInput {
@@ -53,31 +78,5 @@ class UEvent {
 */
 	public static function addEvent($name, callable $call, UEventInput $input = null);
 }
-
-############################################################################################
-UEvent::addEvent("user.create", ["User", "create"]); # creates event for invokation of User::create
-class ClassMethodEventArgs implements UEventInput {
-	public function match(array $params) {
-		if ($params[0] == "foo") {
-			return true;
-		}
-	}
-}
-
-UEvent::addEvent("other.event", ["Class", "method"], new ClassMethodEventArgs()); # creates event for invokation of Class::method('foo')
-
-class DataBackedEventArgs implements UEventArgs {
-	public function __construct($key) {
-		$this->key = $key;
-	}
-	
-	public function get() {
-		return DB::fetch($this->key);
-	}
-}
-
-UEvent::addListener("user.create", function(array $args = []) {
-	echo "user created";
-}, new DataBackedEventArgs());
 ?>
 ```
