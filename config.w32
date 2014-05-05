@@ -1,0 +1,9 @@
+// $Id$
+// vim:ft=javascript
+
+ARG_ENABLE("uevent", "enable uevent support", "no");
+
+if (PHP_UEVENT != "no") {
+	EXTENSION("uevent", "uevent.c");
+}
+
