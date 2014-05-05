@@ -17,7 +17,7 @@ class foo {
 
 var_dump(UEvent::addEvent("foo.bar", ["Foo", "bar"]));
 
-var_dump(UEvent::addListener("foo.bar", function(UEventArgs $args = null){
+var_dump(UEvent::addListener("foo.bar", function(array $args = []){
 	echo "hello foo::bar\n";
 }));
 
