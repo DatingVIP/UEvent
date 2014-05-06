@@ -167,14 +167,12 @@ PHP_METHOD(UEvent, addListener) {
 	*uevent.name = *name;
 	zval_copy_ctor(uevent.name);
 
-	MAKE_STD_ZVAL(uevent.handler);
-	*uevent.handler = *handler;
-	zval_copy_ctor(uevent.handler);
+	uevent.handler = handler;
+	Z_ADDREF_P(handler);
 
 	if (args) {
-		MAKE_STD_ZVAL(uevent.args);
-		*uevent.args = *args;
-		zval_copy_ctor(uevent.args);
+		uevent.args = args;
+		Z_ADDREF_P(args);
 	}
 
 	if (zend_hash_find(&UG(listeners), Z_STRVAL_P(name), Z_STRLEN_P(name), (void**) &listeners) != SUCCESS) {
