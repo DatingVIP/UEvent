@@ -82,7 +82,7 @@ Foo::bar(trigger) called
 
 API
 ===
-*The rest ... WIP!!*
+*Then names of things and what not ...*
 
 ```php
 <?php
