@@ -49,11 +49,11 @@ interface UEventInput {
 
 interface UEventArgs {
 /**
-* Shall return an argument by name, or all arguments
+* Shall return arguments for event listener invocation
 * @param string name
 * @returns mixed
 */
-	public function get($name = null);
+	public function get();
 }
 
 class UEvent {
@@ -73,7 +73,7 @@ class UEvent {
 */
 	public static function getListeners($name);
 	
-/*
+/**
 * Shall create an event of the given $name:
 *  $name shall be fired when $input->accept() returns true
 * @param string name
