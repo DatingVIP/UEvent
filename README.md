@@ -32,6 +32,52 @@ Will output:
 hello foo::bar
 ```
 
+Trigger events based on arguments
+=================================
+*A bit more complicated ...*
+
+The following code demonstrates how to use ```UEventInput``` in combination with ```UEventArgs``` to capture
+and pass the argument stack from call to listener
+
+```php
+<?php
+class foo {
+	public static function bar($foo) {}
+	/* ... */
+}
+
+/* Will capture arguments at calltime and trigger event based on arguments
+	also stores argument stack for passing to listener ... so ... voodoo ... */
+class EventArgs implements UEventInput, UEventArgs {
+	public function accept() {
+		$this->args = func_get_args();
+		if (count($this->args)) {
+			return ($this->args[0] == "trigger");
+		}
+	}
+	
+	public function get() { return $this->args;	}
+
+	protected $args;
+}
+
+$arguments = new EventArgs();
+UEvent::addEvent("foo.bar", ["Foo", "bar"], $arguments);
+UEvent::addListener("foo.bar", function($foo){
+	echo "Foo::bar({$foo[0]}) called\n";
+}, $arguments);
+
+foo::bar('trigger');
+foo::bar('no-trigger');
+?>
+```
+
+Will output
+
+```
+Foo::bar(trigger) called
+```
+
 API
 ===
 *The rest ... WIP!!*
