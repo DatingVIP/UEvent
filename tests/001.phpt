@@ -1,21 +1,24 @@
 --TEST--
-Check for uevent presence
+Check for basic uevent functionality
 --SKIPIF--
-<?php if (!extension_loaded("uevent")) print "skip"; ?>
+<?php include "skip-if.inc" ?>
 --FILE--
 <?php 
-echo "uevent extension is available";
-/*
-	you can add regression tests for your extension here
+class Foo {
+	public static function bar($arg) {
+		return $arg;
+	}
+}
 
-  the output of your test code has to be equal to the
-  text in the --EXPECT-- section below for the tests
-  to pass, differences between the output and the
-  expected text are interpreted as failure
+var_dump(UEvent::addEvent("my.event", ["Foo", "bar"]));
+var_dump(UEvent::addListener("my.event", function(){
+	echo "fired";
+}));
 
-	see php5/README.TESTING for further information on
-  writing regression tests
-*/
+Foo::bar("arg");
 ?>
---EXPECT--
-uevent extension is available
+--EXPECTF--
+bool(true)
+bool(true)
+fired
+

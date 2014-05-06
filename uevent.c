@@ -212,7 +212,6 @@ static zend_function_entry uevent_methods[] = {
 };
 
 ZEND_BEGIN_ARG_INFO_EX(ueventargs_get_arginfo, 0, 0, 0)
-	ZEND_ARG_INFO(0, offset)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(ueventargs_set_arginfo, 0, 0, 0)
@@ -225,7 +224,6 @@ zend_function_entry ueventargs_methods[] = {
 };
 
 ZEND_BEGIN_ARG_INFO_EX(ueventinput_accept_arginfo, 0, 0, 0)
-	ZEND_ARG_TYPE_INFO(0, params, IS_ARRAY, 1)
 ZEND_END_ARG_INFO()
 
 zend_function_entry ueventinput_methods[] = {
@@ -236,8 +234,16 @@ zend_function_entry ueventinput_methods[] = {
 /* {{{ */
 static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 	HashTable *events;
+	void      **top = NULL;
+	int       stacked = 0;
 	
 	zend_executor_function(execute_data TSRMLS_CC);
+	
+	top = zend_vm_stack_top(TSRMLS_C) - 1;
+
+	if (top) {
+		stacked = (int)(zend_uintptr_t) *top;
+	}
 	
 	if (zend_hash_index_find(&UG(events), (zend_ulong) execute_data->function_state.function, (void**)&events) == SUCCESS) {
 		uevent_t *event;
@@ -250,7 +256,59 @@ static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 			HashTable *listeners;
 			uevent_t *listener;
 
-			if (zend_hash_find(&UG(listeners), Z_STRVAL(event->name), Z_STRLEN(event->name), (void**)&listeners) == SUCCESS) {
+			if (Z_TYPE(event->args) == IS_OBJECT) {
+				zend_fcall_info fci;
+				zend_fcall_info_cache fcc;
+				zval arguments;
+				
+				zval callable;
+				zval *retval = NULL;
+				zval *objval = NULL;
+				void *bottom = NULL;
+				zend_bool invoke = 0;
+				
+				MAKE_STD_ZVAL(objval);
+				ZVAL_ZVAL(objval, &event->args, 1, 0);
+				
+				array_init(&callable);
+				add_next_index_zval(&callable, objval);
+				add_next_index_string(&callable, "accept", 1);
+				array_init(&arguments);
+				
+				if (zend_fcall_info_init(&callable, 0, &fci, &fcc, NULL, NULL TSRMLS_CC) == SUCCESS) {
+					fci.retval_ptr_ptr = &retval;
+					
+					bottom = zend_vm_stack_top(TSRMLS_C);
+					
+					EG(argument_stack)->top = top + 1;
+					
+					if (zend_copy_parameters_array(stacked, &arguments TSRMLS_CC) == SUCCESS) {
+						zend_fcall_info_args(&fci, &arguments TSRMLS_CC);
+					}
+					
+					zend_call_function(&fci, &fcc TSRMLS_CC);
+					
+					EG(argument_stack)->top = bottom;
+					
+					zend_fcall_info_args_clear(&fci, 1);
+					
+					if (retval) {
+						invoke = zend_is_true
+							(retval TSRMLS_CC);
+						zval_ptr_dtor(&retval);
+					}			
+				}
+				
+				zval_dtor(&callable);
+				zval_dtor(&arguments);
+				
+				if (!invoke) {
+					continue ;
+				}
+			}
+			
+			if (zend_hash_find(&UG(listeners), Z_STRVAL(event->name), Z_STRLEN(event->name), (void**)&listeners) == SUCCESS) {				
+				
 				for (zend_hash_internal_pointer_reset_ex(listeners, &position[1]);
 					zend_hash_get_current_data_ex(listeners, (void**)&listener, &position[1]) == SUCCESS;
 					zend_hash_move_forward_ex(listeners, &position[1])) {
@@ -262,7 +320,7 @@ static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 					
 					if (zend_fcall_info_init(&listener->handler, 0, &fci, &fcc, NULL, NULL TSRMLS_CC) == SUCCESS) {
 						fci.retval_ptr_ptr = &retval;
-
+						
 						if (Z_TYPE(listener->args) == IS_OBJECT) {
 							objval = &listener->args;
 							if (zend_call_method_with_0_params(

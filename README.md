@@ -40,12 +40,11 @@ API
 <?php
 interface UEventInput {
 /**
-* Shall return boolean true if $params should be accepted
-* If $params are accepted the current event will be fired
-* @param array params
+* Shall recieve the argument stack at call time
 * @returns boolean
+* Note: use func_get_args
 */
-	public function accept(array $params);
+	public function accept();
 }
 
 interface UEventArgs {
@@ -76,7 +75,7 @@ class UEvent {
 	
 /*
 * Shall create an event of the given $name:
-*  $name shall be fired when $input->match returns true
+*  $name shall be fired when $input->accept() returns true
 * @param string name
 * @param callable call
 * @param UEventInput input
