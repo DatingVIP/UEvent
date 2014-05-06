@@ -134,7 +134,7 @@ PHP_METHOD(UEvent, addEvent) {
 		efree(cname);
 } /* }}} */
 
-/* {{{ proto boolean UEvent::addListener(string name, Closure handler [, UEventArgs args = null]) */
+/* {{{ proto boolean UEvent::addListener(string name, Closure handler [, UEventArgs args]) */
 PHP_METHOD(UEvent, addListener) {
 	uevent_t uevent;
 	zval *name = NULL;
@@ -152,7 +152,7 @@ PHP_METHOD(UEvent, addListener) {
 	
 	if (!name || Z_TYPE_P(name) != IS_STRING) {
 		zend_throw_exception_ex(spl_ce_InvalidArgumentException,
-			"UEvent::addEvent expected (string name, callable call, UEventArgs args = null)");
+			"UEvent::addListener expected (string name, Closure listener [, UEventArgs args])");
 		return;
 	}
 	
@@ -185,9 +185,6 @@ PHP_METHOD(UEvent, addListener) {
 		efree(cname);
 } /* }}} */
 
-/* {{{ */
-PHP_METHOD(UEvent, getListeners) {} /* }}} */
-
 ZEND_BEGIN_ARG_INFO_EX(uevent_addevent_arginfo, 0, 0, 2)
 	ZEND_ARG_INFO(0, name)
 	ZEND_ARG_TYPE_INFO(0, call, IS_CALLABLE, 0)
@@ -200,14 +197,9 @@ ZEND_BEGIN_ARG_INFO_EX(uevent_addlistener_arginfo, 0, 0, 2)
 	ZEND_ARG_OBJ_INFO(0, input,   UEventArgs, 1)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_INFO_EX(uevent_getlisteners_arginfo, 0, 0, 1)
-	ZEND_ARG_INFO(0, name)
-ZEND_END_ARG_INFO()
-
 static zend_function_entry uevent_methods[] = {
 	PHP_ME(UEvent, addEvent, uevent_addevent_arginfo, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	PHP_ME(UEvent, addListener, uevent_addlistener_arginfo, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
-	PHP_ME(UEvent, getListeners, uevent_getlisteners_arginfo, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	PHP_FE_END
 };
 

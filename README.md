@@ -114,13 +114,6 @@ class UEvent {
 	public static function addListener($name, Closure $handler, UEventArgs $args = null);
 
 /**
-* Shall find all listeners atttached to $name
-* @param string name
-* @returns array
-*/
-	public static function getListeners($name);
-	
-/**
 * Shall create an event of the given $name:
 *  $name shall be fired when $input->accept() returns true
 * @param string name
@@ -130,6 +123,12 @@ class UEvent {
 * @throws \RuntimeException
 */
 	public static function addEvent($name, callable $call, UEventInput $input = null);
+	
+/**
+* Shall return the names of all events
+* @returns array
+*/
+	public static function getEvents();
 }
 ?>
 ```
