@@ -123,6 +123,12 @@ class UEvent {
 * @throws \RuntimeException
 */
 	public static function addEvent($name, callable $call, UEventInput $input = null);
+
+/**
+* Shall return the names of all events
+* @returns array
+*/
+	public static function getEvents();
 }
 ?>
 ```

@@ -35,13 +35,12 @@
 typedef void (*zend_executor) (zend_execute_data * TSRMLS_DC);
 
 typedef struct _uevent {
-	zval              *name;
+	zval               name;
 	zval              *handler;
 	zval              *args;
-
-	zend_class_entry *scope;
-	zend_function    *function;
 } uevent_t;
+
+#define UEVENT_EVENT_INIT {{0}, NULL, NULL}
 
 zend_executor zend_executor_function = NULL;
 
@@ -61,7 +60,7 @@ static void php_uevent_globals_ctor(zend_uevent_globals *ug)
 static inline void php_uevent_event_dtor(void *ev) {
 	uevent_t *uevent = (uevent_t*) ev;
 	
-	zval_ptr_dtor(&uevent->name);
+	zval_dtor(&uevent->name);
 
 	if (uevent->handler) {
 		zval_ptr_dtor(&uevent->handler);	
@@ -79,19 +78,17 @@ static inline void php_uevent_events_dtor(void *evs) {
 
 /* {{{ proto boolean UEvent::addEvent(string name, callable where [, UEventInput input = null]) */
 PHP_METHOD(UEvent, addEvent) {
-	uevent_t uevent;
+	uevent_t uevent = UEVENT_EVENT_INIT;
 	zval *name = NULL;
 	zval *call = NULL;
 	zval *input = NULL;
 	char *cname = NULL;
 	zend_fcall_info_cache fcc;
-	HashTable *events = NULL;
+	HashTable *events;
 	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "zz|O", &name, &call, &input, UEventInput_ce) != SUCCESS) {
 		return;
 	}
-	
-	memset(&uevent, 0, sizeof(uevent_t));
 	
 	if (!name || Z_TYPE_P(name) != IS_STRING) {
 		zend_throw_exception_ex(spl_ce_InvalidArgumentException, 
@@ -107,26 +104,16 @@ PHP_METHOD(UEvent, addEvent) {
 		return;
 	}
 	
-	MAKE_STD_ZVAL(uevent.name);
-	*uevent.name = *name;
-	zval_copy_ctor(uevent.name);
-
-	if (fcc.function_handler) {
-		uevent.scope = 
-			fcc.function_handler->common.scope;
-		uevent.function = 
-			fcc.function_handler;
-	}
-	
+	uevent.name = *name;
+	zval_copy_ctor(&uevent.name);
 	if (input) {
-		MAKE_STD_ZVAL(uevent.args);
-		*uevent.args = *input;
-		zval_copy_ctor(uevent.args);
+		uevent.args = input;
+		Z_ADDREF_P(uevent.args);
 	}
 
 	if (zend_hash_index_find(&UG(events), (zend_ulong) fcc.function_handler, (void**) &events) != SUCCESS) {
 		HashTable evtable;
-		
+
 		zend_hash_init(&evtable, 8, NULL, php_uevent_event_dtor, 0);
 		zend_hash_index_update(
 			&UG(events),
@@ -141,9 +128,33 @@ PHP_METHOD(UEvent, addEvent) {
 		efree(cname);
 } /* }}} */
 
+/* {{{ proto array UEvent::getEvents() */
+PHP_METHOD(UEvent, getEvents) {
+	HashPosition position[2];
+	HashTable    *events;
+	uevent_t     *uevent;
+	
+	if (zend_parse_parameters_none() != SUCCESS) {
+		return;
+	}
+	
+	array_init(return_value);
+
+	for (zend_hash_internal_pointer_reset_ex(&UG(events), &position[0]);
+		zend_hash_get_current_data_ex(&UG(events), (void**) &events, &position[0]) == SUCCESS;
+		zend_hash_move_forward_ex(&UG(events), &position[0])) {
+		for (zend_hash_internal_pointer_reset_ex(events, &position[1]);
+			zend_hash_get_current_data_ex(events, (void**)&uevent, &position[1]) == SUCCESS;
+			zend_hash_move_forward_ex(events, &position[1])) {
+			add_next_index_stringl(
+				return_value, Z_STRVAL(uevent->name), Z_STRLEN(uevent->name), 1);
+		}	
+	}
+} /* }}} */
+
 /* {{{ proto boolean UEvent::addListener(string name, Closure handler [, UEventArgs args]) */
 PHP_METHOD(UEvent, addListener) {
-	uevent_t uevent;
+	uevent_t uevent = UEVENT_EVENT_INIT;
 	zval *name = NULL;
 	zval *handler = NULL;
 	zval *args = NULL;
@@ -155,21 +166,17 @@ PHP_METHOD(UEvent, addListener) {
 		return;
 	}
 	
-	memset(&uevent, 0, sizeof(uevent_t));
-	
 	if (!name || Z_TYPE_P(name) != IS_STRING) {
 		zend_throw_exception_ex(spl_ce_InvalidArgumentException,
 			"UEvent::addListener expected (string name, Closure listener [, UEventArgs args])");
 		return;
 	}
 
-	MAKE_STD_ZVAL(uevent.name);
-	*uevent.name = *name;
-	zval_copy_ctor(uevent.name);
-
+	uevent.name = *name;
+	zval_copy_ctor
+		(&uevent.name);
 	uevent.handler = handler;
 	Z_ADDREF_P(handler);
-
 	if (args) {
 		uevent.args = args;
 		Z_ADDREF_P(args);
@@ -198,6 +205,9 @@ ZEND_BEGIN_ARG_INFO_EX(uevent_addevent_arginfo, 0, 0, 2)
 	ZEND_ARG_OBJ_INFO(0, input, UEventInput, 1)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(uevent_getevents_arginfo, 0, 0, 0)
+ZEND_END_ARG_INFO()
+
 ZEND_BEGIN_ARG_INFO_EX(uevent_addlistener_arginfo, 0, 0, 2)
 	ZEND_ARG_INFO(0, name)
 	ZEND_ARG_OBJ_INFO(0, handler, Closure, 0)
@@ -206,6 +216,7 @@ ZEND_END_ARG_INFO()
 
 static zend_function_entry uevent_methods[] = {
 	PHP_ME(UEvent, addEvent, uevent_addevent_arginfo, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	PHP_ME(UEvent, getEvents, uevent_getevents_arginfo, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	PHP_ME(UEvent, addListener, uevent_addlistener_arginfo, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	PHP_FE_END
 };
@@ -302,7 +313,7 @@ static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 				}
 			}
 			
-			if (zend_hash_find(&UG(listeners), Z_STRVAL_P(event->name), Z_STRLEN_P(event->name), (void**)&listeners) == SUCCESS) {				
+			if (zend_hash_find(&UG(listeners), Z_STRVAL(event->name), Z_STRLEN(event->name), (void**)&listeners) == SUCCESS) {				
 				
 				for (zend_hash_internal_pointer_reset_ex(listeners, &position[1]);
 					zend_hash_get_current_data_ex(listeners, (void**)&listener, &position[1]) == SUCCESS;

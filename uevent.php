@@ -21,10 +21,13 @@ class EventArgs implements UEventInput, UEventArgs {
 
 $arguments = new EventArgs();
 UEvent::addEvent("foo.bar", ["Foo", "bar"], $arguments);
+UEvent::addEvent("foo.bar2", ["Foo", "bar"], $arguments);
 UEvent::addListener("foo.bar", function($argv){
 	echo "Foo::bar({$argv[0]}) called\n";
 }, $arguments);
 
 foo::bar('trigger');
 foo::bar('no-trigger');
+
+var_dump(UEvent::getEvents());
 ?>
