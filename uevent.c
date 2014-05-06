@@ -35,9 +35,9 @@
 typedef void (*zend_executor) (zend_execute_data * TSRMLS_DC);
 
 typedef struct _uevent {
-	zval              name;
-	zval              handler;
-	zval              args;
+	zval              *name;
+	zval              *handler;
+	zval              *args;
 
 	zend_class_entry *scope;
 	zend_function    *function;
@@ -61,9 +61,15 @@ static void php_uevent_globals_ctor(zend_uevent_globals *ug)
 static inline void php_uevent_event_dtor(void *ev) {
 	uevent_t *uevent = (uevent_t*) ev;
 	
-	zval_dtor(&uevent->name);
-	zval_dtor(&uevent->handler);
-	zval_dtor(&uevent->args);
+	zval_ptr_dtor(&uevent->name);
+
+	if (uevent->handler) {
+		zval_ptr_dtor(&uevent->handler);	
+	}
+	
+	if (uevent->args) {
+		zval_ptr_dtor(&uevent->args);
+	}
 } /* }}} */
 
 /* {{{ */
@@ -101,8 +107,9 @@ PHP_METHOD(UEvent, addEvent) {
 		return;
 	}
 	
-	uevent.name = *name;
-	zval_copy_ctor(&uevent.name);
+	MAKE_STD_ZVAL(uevent.name);
+	*uevent.name = *name;
+	zval_copy_ctor(uevent.name);
 
 	if (fcc.function_handler) {
 		uevent.scope = 
@@ -112,9 +119,9 @@ PHP_METHOD(UEvent, addEvent) {
 	}
 	
 	if (input) {
-		uevent.args = *input;
-		zval_copy_ctor
-			(&uevent.args);
+		MAKE_STD_ZVAL(uevent.args);
+		*uevent.args = *input;
+		zval_copy_ctor(uevent.args);
 	}
 
 	if (zend_hash_index_find(&UG(events), (zend_ulong) fcc.function_handler, (void**) &events) != SUCCESS) {
@@ -155,17 +162,19 @@ PHP_METHOD(UEvent, addListener) {
 			"UEvent::addListener expected (string name, Closure listener [, UEventArgs args])");
 		return;
 	}
-	
-	uevent.name = *name;
-	zval_copy_ctor(&uevent.name);
 
-	uevent.handler = *handler;
-	zval_copy_ctor(&uevent.handler);
+	MAKE_STD_ZVAL(uevent.name);
+	*uevent.name = *name;
+	zval_copy_ctor(uevent.name);
+
+	MAKE_STD_ZVAL(uevent.handler);
+	*uevent.handler = *handler;
+	zval_copy_ctor(uevent.handler);
 
 	if (args) {
-		uevent.args = *args;
-		zval_copy_ctor
-			(&uevent.args);
+		MAKE_STD_ZVAL(uevent.args);
+		*uevent.args = *args;
+		zval_copy_ctor(uevent.args);
 	}
 
 	if (zend_hash_find(&UG(listeners), Z_STRVAL_P(name), Z_STRLEN_P(name), (void**) &listeners) != SUCCESS) {
@@ -248,22 +257,18 @@ static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 			HashTable *listeners;
 			uevent_t *listener;
 
-			if (Z_TYPE(event->args) == IS_OBJECT) {
+			if (event->args && Z_TYPE_P(event->args) == IS_OBJECT) {
 				zend_fcall_info fci;
 				zend_fcall_info_cache fcc;
 				zval arguments;
 				
 				zval callable;
 				zval *retval = NULL;
-				zval *objval = NULL;
 				void *bottom = NULL;
 				zend_bool invoke = 0;
 				
-				MAKE_STD_ZVAL(objval);
-				ZVAL_ZVAL(objval, &event->args, 1, 0);
-				
 				array_init(&callable);
-				add_next_index_zval(&callable, objval);
+				add_next_index_zval(&callable, event->args);
 				add_next_index_string(&callable, "accept", 1);
 				array_init(&arguments);
 				
@@ -299,7 +304,7 @@ static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 				}
 			}
 			
-			if (zend_hash_find(&UG(listeners), Z_STRVAL(event->name), Z_STRLEN(event->name), (void**)&listeners) == SUCCESS) {				
+			if (zend_hash_find(&UG(listeners), Z_STRVAL_P(event->name), Z_STRLEN_P(event->name), (void**)&listeners) == SUCCESS) {				
 				
 				for (zend_hash_internal_pointer_reset_ex(listeners, &position[1]);
 					zend_hash_get_current_data_ex(listeners, (void**)&listener, &position[1]) == SUCCESS;
@@ -308,16 +313,14 @@ static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 					zend_fcall_info_cache fcc;
 					zval *retval = NULL;
 					zval *argval = NULL;
-					zval *objval = NULL;
 					
-					if (zend_fcall_info_init(&listener->handler, 0, &fci, &fcc, NULL, NULL TSRMLS_CC) == SUCCESS) {
+					if (zend_fcall_info_init(listener->handler, 0, &fci, &fcc, NULL, NULL TSRMLS_CC) == SUCCESS) {
 						fci.retval_ptr_ptr = &retval;
 						
-						if (Z_TYPE(listener->args) == IS_OBJECT) {
-							objval = &listener->args;
+						if (listener->args && Z_TYPE_P(listener->args) == IS_OBJECT) {
 							if (zend_call_method_with_0_params(
-								&objval,
-								Z_OBJCE(listener->args), NULL, "get", &argval)) {
+								&listener->args,
+								Z_OBJCE_P(listener->args), NULL, "get", &argval)) {
 								zend_fcall_info_argn(
 									&fci TSRMLS_CC, 1, &argval);
 							}
