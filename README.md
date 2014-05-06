@@ -96,8 +96,7 @@ interface UEventInput {
 interface UEventArgs {
 /**
 * Shall return arguments for event listener invocation
-* @param string name
-* @returns mixed
+* @returns array
 */
 	public function get();
 }
