@@ -8,6 +8,8 @@ Example
 =======
 *How ...*
 
+The following code demonstrates how to attach events to the invokation of methods or functions:
+
 ```php
 <?php
 class foo {
@@ -16,7 +18,7 @@ class foo {
 }
 
 UEvent::addEvent("foo.bar", ["Foo", "bar"])
-UEvent::addListener("foo.bar", function(array $args = []){
+UEvent::addListener("foo.bar", function(array $array = []){
 	echo "hello foo::bar\n";
 });
 
