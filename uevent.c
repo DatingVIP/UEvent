@@ -294,11 +294,18 @@ zend_function_entry ueventinput_methods[] = {
 
 /* {{{ */
 static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
+#define EEX(el) (execute_data)->el
 	HashTable *events;
 	void      **top = NULL;
 	int       stacked = 0;
-	
+	zend_bool generator = (EEX(op_array) && EEX(op_array)->fn_flags & ZEND_ACC_GENERATOR);
+
 	zend_executor_function(execute_data TSRMLS_CC);
+	
+	if (generator) {
+		/* cannot fire events in generators, too messy ... */
+		return;
+	}
 	
 	top = zend_vm_stack_top(TSRMLS_C) - 1;
 
@@ -350,8 +357,11 @@ static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 					zend_fcall_info_args_clear(&fci, 1);
 					
 					if (retval) {
-						invoke = zend_is_true
-							(retval TSRMLS_CC);
+#if PHP_VERSION_ID >= 50600
+						invoke = zend_is_true(retval TSRMLS_CC);
+#else
+						invoke = zend_is_true(retval);
+#endif
 						zval_ptr_dtor(&retval);
 					}			
 				}
