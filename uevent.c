@@ -313,7 +313,7 @@ static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 		stacked = (int)(zend_uintptr_t) *top;
 	}
 	
-	if (zend_hash_index_find(&UG(events), (zend_ulong) execute_data->function_state.function, (void**)&events) == SUCCESS) {
+	if (zend_hash_index_find(&UG(events), (zend_ulong) EEX(function_state).function, (void**)&events) == SUCCESS) {
 		uevent_t *event;
 		HashPosition position[2];
 		
