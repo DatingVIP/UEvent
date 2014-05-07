@@ -1,33 +1,18 @@
 <?php
 class foo {
-	public static function bar($foo) {}
+	public function bar($foo) {}
+	protected function qux($bar) {}
 	/* ... */
 }
 
-/* Will capture arguments at calltime and trigger event based on arguments
-	also stores argument stack for passing to listener ... so ... voodoo ... */
-class EventArgs implements UEventInput, UEventArgs {
-	public function accept() {
-		$this->args = func_get_args();
-		if (count($this->args)) {
-			return ($this->args[0] == "trigger");
-		}
-	}
-	
-	public function get() { return $this->args;	}
+UEvent::addEvent("foo.bar", ["Foo", "bar"]);
+UEvent::addEvent("foo.qux", ["Foo", "qux"]);
+UEvent::addListener("foo.bar", function(){
+	echo "Foo::bar() called\n";
+});
 
-	protected $args;
-}
-
-$arguments = new EventArgs();
-UEvent::addEvent("foo.bar", ["Foo", "bar"], $arguments);
-UEvent::addEvent("foo.bar2", ["Foo", "bar"], $arguments);
-UEvent::addListener("foo.bar", function($argv){
-	echo "Foo::bar({$argv[0]}) called\n";
-}, $arguments);
-
-foo::bar('trigger');
-foo::bar('no-trigger');
+$foo = new foo();
+$foo->bar('trigger');
 
 var_dump(UEvent::getEvents());
 ?>

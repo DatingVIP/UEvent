@@ -82,25 +82,79 @@ PHP_METHOD(UEvent, addEvent) {
 	zval *name = NULL;
 	zval *call = NULL;
 	zval *input = NULL;
-	char *cname = NULL;
-	zend_fcall_info_cache fcc;
+	char *lcname = NULL;
+	zval **clazz = NULL;
+	zval **method = NULL;
+	zend_function *address;
 	HashTable *events;
-	
+		
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "zz|O", &name, &call, &input, UEventInput_ce) != SUCCESS) {
 		return;
 	}
 	
 	if (!name || Z_TYPE_P(name) != IS_STRING) {
-		zend_throw_exception_ex(spl_ce_InvalidArgumentException, 
+		zend_throw_exception_ex(spl_ce_InvalidArgumentException,
 			"UEvent::addEvent expected (string name, callable call, UEventInput input = null), name is not a string");
 		return;
 	}
 	
-	if (!call || !zend_is_callable_ex(call, NULL, IS_CALLABLE_CHECK_SILENT, &cname, NULL, &fcc, NULL TSRMLS_CC)) {
-		zend_throw_exception_ex(spl_ce_InvalidArgumentException, 
-			"UEvent::addEvent expected (string name, callable call, UEventInput input = null), call is not a callable");
-		if (cname)
-			efree(cname);
+	if (!call) {
+		zend_throw_exception_ex(spl_ce_InvalidArgumentException,
+			"UEvent::addEvent expected (string name, callable call, UEventInput input = null), call was not provided");
+		return;
+	}
+	
+	switch (Z_TYPE_P(call)) {
+		case IS_ARRAY: {
+			zend_class_entry **pce;
+			
+			if (zend_hash_index_find(Z_ARRVAL_P(call), 0, (void**) &clazz) != SUCCESS ||
+				zend_hash_index_find(Z_ARRVAL_P(call), 1, (void**) &method) != SUCCESS) {
+				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
+					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), class and method not provided");
+				return;
+			}
+			
+			if ((!clazz || Z_TYPE_PP(clazz) != IS_STRING) ||
+				(!method || Z_TYPE_PP(method) != IS_STRING)) {
+				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
+					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), class or method is invalid");
+				return;
+			}	
+
+			if (zend_lookup_class(Z_STRVAL_PP(clazz), Z_STRLEN_PP(clazz), &pce TSRMLS_CC) != SUCCESS) {
+				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
+					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), class %s cannot be found", Z_STRVAL_PP(clazz));
+				return;
+			}
+			
+			lcname = zend_str_tolower_dup(Z_STRVAL_PP(method), Z_STRLEN_PP(method)+1);
+			if (zend_hash_find(&(*pce)->function_table, lcname, Z_STRLEN_PP(method)+1, (void**)&address) != SUCCESS) {
+				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
+					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), method %s could not be found in %s", 
+						Z_STRVAL_PP(method), Z_STRVAL_PP(clazz));
+				efree(lcname);
+				return;
+			}
+			efree(lcname);
+		} break;
+		
+		case IS_STRING: {
+			lcname = zend_str_tolower_dup(Z_STRVAL_P(call), Z_STRLEN_P(call)+1);
+			if (zend_hash_find(EG(function_table), lcname, Z_STRLEN_P(call)+1, (void**)&address) != SUCCESS) {
+				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
+					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), the function %s could not be found", 
+						Z_STRVAL_P(call));
+				efree(lcname);
+				return;
+			}
+			efree(lcname);
+		} break;
+	}
+	
+	if (address->type != ZEND_USER_FUNCTION) {
+		zend_throw_exception_ex(spl_ce_RuntimeException,
+			"UEvent cannot bind to internal function addresses, it does not seem useful !", Z_STRVAL_PP(clazz));
 		return;
 	}
 	
@@ -111,21 +165,18 @@ PHP_METHOD(UEvent, addEvent) {
 		Z_ADDREF_P(uevent.args);
 	}
 
-	if (zend_hash_index_find(&UG(events), (zend_ulong) fcc.function_handler, (void**) &events) != SUCCESS) {
+	if (zend_hash_index_find(&UG(events), (zend_ulong) address, (void**) &events) != SUCCESS) {
 		HashTable evtable;
 
 		zend_hash_init(&evtable, 8, NULL, php_uevent_event_dtor, 0);
 		zend_hash_index_update(
 			&UG(events),
-			(zend_ulong) fcc.function_handler, 
+			(zend_ulong) address, 
 			(void**)&evtable, sizeof(HashTable), 
 			(void**)&events);
 	}
 	
-	RETVAL_BOOL(zend_hash_next_index_insert(events, (void**) &uevent, sizeof(uevent_t), NULL) == SUCCESS);
-	
-	if (cname)
-		efree(cname);
+	RETURN_BOOL(zend_hash_next_index_insert(events, (void**) &uevent, sizeof(uevent_t), NULL) == SUCCESS);
 } /* }}} */
 
 /* {{{ proto array UEvent::getEvents() */
@@ -201,7 +252,7 @@ PHP_METHOD(UEvent, addListener) {
 
 ZEND_BEGIN_ARG_INFO_EX(uevent_addevent_arginfo, 0, 0, 2)
 	ZEND_ARG_INFO(0, name)
-	ZEND_ARG_TYPE_INFO(0, call, IS_CALLABLE, 0)
+	ZEND_ARG_INFO(0, call)
 	ZEND_ARG_OBJ_INFO(0, input, UEventInput, 1)
 ZEND_END_ARG_INFO()
 
