@@ -54,6 +54,9 @@ zend_class_entry *UEventInput_ce = NULL;
 
 ZEND_DECLARE_MODULE_GLOBALS(uevent);
 
+/* {{{ */
+#include "uevent.h" /* }}} */
+
 /* {{{ php_uevent_init_globals
  */
 static void php_uevent_globals_ctor(zend_uevent_globals *ug)
@@ -297,119 +300,33 @@ zend_function_entry ueventinput_methods[] = {
 /* {{{ */
 static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 #define EEX(el) (execute_data)->el
-	HashTable *events;
+	HashTable *events, *listeners;
+	uevent_t *event, *listener;
+	HashPosition position[2] = {NULL, NULL};
 	void      **top = NULL;
 	int       stacked = 0;
-	zend_bool generator = (EEX(op_array) && EEX(op_array)->fn_flags & ZEND_ACC_GENERATOR);
 
 	zend_executor_function(execute_data TSRMLS_CC);
 	
-	if (generator) {
+	if ((EEX(op_array) && EEX(op_array)->fn_flags & ZEND_ACC_GENERATOR)) {
 		/* cannot fire events in generators, too messy ... */
 		return;
 	}
 	
 	top = zend_vm_stack_top(TSRMLS_C) - 1;
 
-	if (top) {
+	if (top)
 		stacked = (int)(zend_uintptr_t) *top;
-	}
-	
-	if (zend_hash_index_find(&UG(events), (zend_ulong) EEX(function_state).function, (void**)&events) == SUCCESS) {
-		uevent_t *event;
-		HashPosition position[2];
-		
-		for (zend_hash_internal_pointer_reset_ex(events, &position[0]);
-			zend_hash_get_current_data_ex(events, (void**)&event, &position[0]) == SUCCESS;
-			zend_hash_move_forward_ex(events, &position[0])) {
 
-			HashTable *listeners;
-			uevent_t *listener;
-
-			if (Z_TYPE(event->args) == IS_OBJECT) {
-				zend_fcall_info fci;
-				zend_fcall_info_cache fcc;
-				zval arguments;
-				
-				zval callable;
-				zval *retval = NULL;
-				void *bottom = NULL;
-				zend_bool invoke = 0;
-				
-				array_init(&callable);
-				add_next_index_zval(&callable, &event->args);
-				Z_ADDREF(event->args);
-				add_next_index_string(&callable, "accept", 1);
-				array_init(&arguments);
-				
-				if (zend_fcall_info_init(&callable, 0, &fci, &fcc, NULL, NULL TSRMLS_CC) == SUCCESS) {
-					fci.retval_ptr_ptr = &retval;
-					
-					bottom = zend_vm_stack_top(TSRMLS_C);
-					
-					EG(argument_stack)->top = top + 1;
-					
-					if (zend_copy_parameters_array(stacked, &arguments TSRMLS_CC) == SUCCESS) {
-						zend_fcall_info_args(&fci, &arguments TSRMLS_CC);
-					}
-					
-					zend_call_function(&fci, &fcc TSRMLS_CC);
-					
-					EG(argument_stack)->top = bottom;
-					
-					zend_fcall_info_args_clear(&fci, 1);
-					
-					if (retval) {
-#if PHP_VERSION_ID >= 50600
-						invoke = zend_is_true(retval TSRMLS_CC);
-#else
-						invoke = zend_is_true(retval);
-#endif
-						zval_ptr_dtor(&retval);
-					}			
-				}
-				
-				zval_dtor(&callable);
-				zval_dtor(&arguments);
-				
-				if (!invoke) {
-					continue ;
-				}
+	if ((events = uevent_get_events(EEX(function_state).function, &position[0] TSRMLS_CC))) {
+		while ((event = uevent_get_event(events, &position[0]))) {
+			if (!uevent_accept(event, top, stacked TSRMLS_CC)) {
+				continue;
 			}
 			
-			if (zend_hash_find(&UG(listeners), Z_STRVAL(event->name), Z_STRLEN(event->name), (void**)&listeners) == SUCCESS) {				
-				
-				for (zend_hash_internal_pointer_reset_ex(listeners, &position[1]);
-					zend_hash_get_current_data_ex(listeners, (void**)&listener, &position[1]) == SUCCESS;
-					zend_hash_move_forward_ex(listeners, &position[1])) {
-					zend_fcall_info fci;
-					zend_fcall_info_cache fcc;
-					zval *retval = NULL;
-					zval *argval = NULL;
-					
-					if (zend_fcall_info_init(&listener->handler, 0, &fci, &fcc, NULL, NULL TSRMLS_CC) == SUCCESS) {
-						fci.retval_ptr_ptr = &retval;
-						
-						if (Z_TYPE(listener->args) == IS_OBJECT) {
-							zval *object = &listener->args;
-							if (zend_call_method_with_0_params(
-								&object,
-								Z_OBJCE(listener->args), NULL, "get", &argval)) {
-								zend_fcall_info_argn(
-									&fci TSRMLS_CC, 1, &argval);
-							}
-						}
-
-						zend_call_function(&fci, &fcc TSRMLS_CC);
-
-						if (retval)
-							zval_ptr_dtor(&retval);
-						
-						if (argval)
-							zval_ptr_dtor(&argval);
-						
-						zend_fcall_info_args_clear(&fci, 1);
-					}
+			if ((listeners = uevent_get_listeners(event, &position[1] TSRMLS_CC))) {
+				while ((listener = uevent_get_listener(listeners, &position[1]))) {
+					uevent_invoke(listener TSRMLS_CC);
 				}
 			}
 		}
