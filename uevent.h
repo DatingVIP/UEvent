@@ -98,6 +98,18 @@ static zend_function* uevent_get_function(zval *call TSRMLS_DC) {
 			}
 			efree(lcname);
 		} break;
+		
+		case IS_OBJECT: {
+			zend_fcall_info_cache fcc;
+			
+			if (!zend_is_callable_ex(call, NULL, IS_CALLABLE_CHECK_SILENT, NULL, NULL, &fcc, NULL TSRMLS_CC)) {
+				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
+					"UEvent::addListener expected (string name, closure listener, UEventArgs args = null), the closure passed was not valid");
+				return NULL;
+			}
+			
+			address = fcc.function_handler;
+		} break;
 	}
 	
 	if (address->type != ZEND_USER_FUNCTION) {
@@ -174,7 +186,7 @@ static inline HashTable *uevent_get_listeners(uevent_t *event, HashPosition *pos
 static inline zend_bool uevent_add_listener(zval *name, zval *handler, zval *args TSRMLS_DC) {
 	uevent_t uevent;
 	HashTable *listeners = NULL;
-
+	
 	UEVENT_EVENT_INIT(uevent);
 
 	uevent.name = *name;
@@ -284,7 +296,48 @@ static inline zend_bool uevent_accept(uevent_t *event, void **top, int stacked T
 } /* }}} */
 
 /* {{{ */
-static inline void uevent_invoke(uevent_t *listener TSRMLS_DC) {
+static inline zend_bool uevent_verify_error(zend_function *listener, zend_function *address, char *reason TSRMLS_DC) {
+	if (address->common.scope) {
+		zend_throw_exception_ex(spl_ce_RuntimeException, 0 TSRMLS_CC,
+		"%s::%s has invalid listener, %s",
+		address->common.scope->name, address->common.function_name, reason);
+	} else zend_throw_exception_ex(spl_ce_RuntimeException,
+		"%s::%s has invalid listener, %s", 0 TSRMLS_CC,
+		address->common.function_name, address->common.num_args, reason);
+	return 0;
+} /* }}} */
+
+/* {{{ */
+static inline zend_bool uevent_verify_listener(zend_function *listener, zend_function *address TSRMLS_DC) {
+	zend_arg_info *info[2] = {NULL, NULL};
+	
+	if (address->common.num_args) {
+		zend_uint arg = 0;
+		
+		if ((!listener->common.num_args) ||
+			(listener->common.num_args != address->common.num_args)) {
+			return uevent_verify_error
+				(listener, address, "prototype mismatch, wrong number of arguments" TSRMLS_CC);
+		}
+		
+		while (arg < address->common.num_args) {
+			info[0] = &address->common.arg_info[arg];
+			info[1] = &listener->common.arg_info[arg];
+			
+			if (info[0]->type_hint != info[1]->type_hint) {
+				return uevent_verify_error
+					(listener, address, "prototype mismatch, type hints incompatible" TSRMLS_CC);
+			}
+			
+			arg++;
+		}
+	}
+	
+	return 1;
+} /* }}} */
+
+/* {{{ */
+static inline void uevent_invoke(uevent_t *listener, zend_function *address TSRMLS_DC) {
 	zend_fcall_info fci;
 	zend_fcall_info_cache fcc;
 	zval *retval = NULL;
@@ -292,14 +345,18 @@ static inline void uevent_invoke(uevent_t *listener TSRMLS_DC) {
 	
 	if (zend_fcall_info_init(&listener->handler, 0, &fci, &fcc, NULL, NULL TSRMLS_CC) == SUCCESS) {
 		fci.retval_ptr_ptr = &retval;
-		
+
+		if (!uevent_verify_listener(fcc.function_handler, address TSRMLS_CC)) {
+			return;	
+		}
+
 		if (Z_TYPE(listener->args) == IS_OBJECT) {
 			zval *object = &listener->args;
 			if (zend_call_method_with_0_params(
 				&object,
 				Z_OBJCE(listener->args), NULL, "get", &argval)) {
-				zend_fcall_info_argn(
-					&fci TSRMLS_CC, 1, &argval);
+				zend_fcall_info_args(
+					&fci, argval TSRMLS_CC);
 			}
 		}
 
@@ -319,11 +376,12 @@ static inline void uevent_invoke(uevent_t *listener TSRMLS_DC) {
 static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 #define EEX(el) (execute_data)->el
 	HashTable *events, *listeners;
-	uevent_t *event, *listener;
-	HashPosition position[2] = {NULL, NULL};
-	void      **top = NULL;
-	int       stacked = 0;
-
+	uevent_t *event,   *listener;
+	HashPosition        position[2] = {NULL, NULL};
+	void              **top = NULL;
+	int                 stacked = 0;
+	zend_function      *address = EEX(function_state).function;
+	
 	zend_executor_function(execute_data TSRMLS_CC);
 	
 	if ((EEX(op_array) && EEX(op_array)->fn_flags & ZEND_ACC_GENERATOR)) {
@@ -336,7 +394,7 @@ static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 	if (top)
 		stacked = (int)(zend_uintptr_t) *top;
 
-	if ((events = uevent_get_events(EEX(function_state).function, &position[0] TSRMLS_CC))) {
+	if ((events = uevent_get_events(address, &position[0] TSRMLS_CC))) {
 		while ((event = uevent_get_event(events, &position[0]))) {
 			if (!uevent_accept(event, top, stacked TSRMLS_CC)) {
 				continue;
@@ -344,7 +402,7 @@ static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 			
 			if ((listeners = uevent_get_listeners(event, &position[1] TSRMLS_CC))) {
 				while ((listener = uevent_get_listener(listeners, &position[1]))) {
-					uevent_invoke(listener TSRMLS_CC);
+					uevent_invoke(listener, address TSRMLS_CC);
 				}
 			}
 		}

@@ -10,20 +10,25 @@ class Foo {
 	}
 }
 
-class Selector implements UEventInput {
+class FooArgs implements UEventInput, UEventArgs {
 	public function accept() {
-		$args = func_get_args();
-		
-		if (count($args)) {
-			return ($args[0] == "trigger");
+		$this->args = 
+			func_get_args();
+		if (count($this->args)) {
+			return 
+				($this->args[0] == "trigger");
 		}
+	}
+	
+	public function get() {
+		return $this->args;
 	}
 }
 
-var_dump(UEvent::addEvent("my.event", ["Foo", "bar"], new Selector()));
-var_dump(UEvent::addListener("my.event", function(){
+var_dump(UEvent::addEvent("my.event", ["Foo", "bar"], $args = new FooArgs()));
+var_dump(UEvent::addListener("my.event", function($arg){
 	echo "fired";
-}));
+}, $args));
 
 Foo::bar("arg");
 Foo::bar("trigger");

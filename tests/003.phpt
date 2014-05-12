@@ -10,31 +10,26 @@ class Foo {
 	}
 }
 
-class Selector implements UEventInput {
+class FooArgs implements UEventInput, UEventArgs {
 	public function accept() {
-		$args = func_get_args();
+		$this->args = func_get_args();
 		
-		if (count($args)) {
-			return ($args[0] == "trigger");
+		if (count($this->args)) {
+			return 
+				($this->args[0] == "trigger");
 		}
 	}
+	
+	public function get() { return $this->args; }
+	
+	protected $args;
 }
 
-class Arguments implements UEventArgs {
-	public function __construct($key) {
-		$this->key = $key;
-	}
-	
-	public function get($offset = null) { return $this->key; }
-	
-	protected $key;
-}
-
-var_dump(UEvent::addEvent("my.event", ["Foo", "bar"], new Selector()));
-var_dump(UEvent::addListener("my.event", function($args){
+var_dump(UEvent::addEvent("my.event", ["Foo", "bar"], $args = new FooArgs()));
+var_dump(UEvent::addListener("my.event", function($arg){
 	echo "fired\n";
-	var_dump($args);
-}, new Arguments("qux")));
+	var_dump($arg);
+}, $args));
 
 Foo::bar("arg"); # will not fire event
 Foo::bar("trigger"); # will fire event
@@ -43,4 +38,4 @@ Foo::bar("trigger"); # will fire event
 bool(true)
 bool(true)
 fired
-string(3) "qux"
+string(7) "trigger"
