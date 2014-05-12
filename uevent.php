@@ -2,16 +2,15 @@
 /* dummy */
 class DB {
 	public static function fetch($event) {
-		/* SELECT * FROM events WHERE event = '$event' && enabled = '1' */
-		foreach (self::$events[$event] as $interface) {
-			yield $interface;
+		foreach (self::$events[$event] as $event => $method) {
+			yield $event => $method;
 		}
 	}
 	
 	protected static $events = [
-		"UserRegisteredEvent" => [
-			"SendEmailHandler",
-			"BurnADogHandler"
+		"ControllerEvents" => [
+			"onRegister" => ["User", "register"],
+			"onLogin"=>		["User", "login"]
 		]
 	];
 }
@@ -24,13 +23,16 @@ class User {
 	}
 }
 
-/* defined by the method the event was registered on */
-interface UserRegisteredEvent {
-	public static function invoke($user, $email);
+interface UEvents {
+	public function getEvents();
+}
+
+interface ControllerEvent {
+	public function invoke(Controller $controller, array $argv = []);
 }
 
 /* move args around */
-class UserRegisteredEventArgs implements UEventInput, UEventArgs {
+class ControllerEventArgs implements UEventInput, UEventArgs {
 	public function accept() {
 		$this->args = 
 			func_get_args();
@@ -45,11 +47,21 @@ class UserRegisteredEventArgs implements UEventInput, UEventArgs {
 	protected $args;
 }
 
+class Controller implements UEvents {
+	public function getEvents() {
+		return [
+			"onRegister" => ["User", "register"],
+			"onLogin"=>		["User", "login"]
+		];
+	}
+}
+
 /* I can run on User::register, present me in interface with checkbox
 	under the User::register column for events to enable ? */
-class SendEmailHandler implements UserRegisteredEvent {
-	public static function invoke($user, $email) {
-		printf("send email to %s -> %s\n", $user, $email);
+class SendEmail implements ControllerEvent {
+	public static function invoke(Controller $controller, array $argv = []) {
+		printf(
+			"send email to %s -> %s\n", $argv[0], $argv[1]);
 	}
 }
 
