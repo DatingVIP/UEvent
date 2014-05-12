@@ -23,7 +23,7 @@ class FooArgs implements UEventInput, UEventArgs {
 }
 
 UEvent::addEvent("onFooBar", ["Foo", "bar"], $args = new FooArgs());
-UEvent::addListener("onFooBar", function(stdClass $qux) {
+UEvent::addListener("onFooBar", function($qux) {
 	var_dump($qux);
 }, $args);
 
