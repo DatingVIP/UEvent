@@ -17,7 +17,7 @@ class foo {
 	/* ... */
 }
 
-UEvent::addEvent("foo.bar", ["Foo", "bar"])
+UEvent::addEvent("foo.bar", ["Foo", "bar"]);
 UEvent::addListener("foo.bar", function(array $array = []){
 	echo "hello foo::bar\n";
 });
@@ -57,7 +57,7 @@ class EventArgs implements UEventInput, UEventArgs {
 			return ($this->args[0] == "trigger");
 		}
 	}
-	
+
 	public function get() { return $this->args;	}
 
 	protected $args;
@@ -66,7 +66,7 @@ class EventArgs implements UEventInput, UEventArgs {
 $arguments = new EventArgs();
 UEvent::addEvent("foo.bar", ["Foo", "bar"], $arguments);
 UEvent::addListener("foo.bar", function($argv){
-	echo "Foo::bar({$argv[0]}) called\n";
+	echo "Foo::bar({$argv}) called\n";
 }, $arguments);
 
 foo::bar('trigger');
@@ -105,7 +105,7 @@ interface UEventArgs {
 
 class UEvent {
 /**
-* Shall call $handler($args->get()) when $name is fired by uevent 
+* Shall call $handler($args->get()) when $name is fired by uevent
 * @param string name
 * @param Closure handler
 * @returns boolean
