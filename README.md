@@ -59,7 +59,7 @@ class UEvent {
 * @returns boolean
 * @throws \RuntimeException
 */
-	public static function addEvent($event, callable $call);
+	public static function addEvent($name, callable $call);
 
 /**
 * Shall add a listening function to execute when the named event is fired
