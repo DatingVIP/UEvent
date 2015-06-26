@@ -37,8 +37,6 @@ typedef void (*zend_executor) (zend_execute_data *);
 zend_executor zend_executor_function = NULL;
 
 zend_class_entry *UEvent_ce = NULL;
-zend_class_entry *UEventArgs_ce = NULL;
-zend_class_entry *UEventInput_ce = NULL;
 
 ZEND_DECLARE_MODULE_GLOBALS(uevent);
 
@@ -55,7 +53,6 @@ static void php_uevent_globals_ctor(zend_uevent_globals *ug)
 PHP_METHOD(UEvent, addEvent) {
 	zval *name = NULL;
 	zval *call = NULL;
-	zval *input = NULL;
 
 	if (zend_parse_parameters(ZEND_NUM_ARGS(), "zz", &name, &call) != SUCCESS) {
 		return;
