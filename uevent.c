@@ -79,8 +79,7 @@ PHP_METHOD(UEvent, addEvent) {
 /* {{{ proto array UEvent::getEvents() */
 PHP_METHOD(UEvent, getEvents) {
 	HashPosition position[2];
-	HashTable    *events;
-	uevent_t     *uevent;
+	zval         *bucket[2];
 	
 	if (zend_parse_parameters_none() != SUCCESS) {
 		return;
@@ -89,13 +88,16 @@ PHP_METHOD(UEvent, getEvents) {
 	array_init(return_value);
 
 	for (zend_hash_internal_pointer_reset_ex(&UG(events), &position[0]);
-		zend_hash_get_current_data_ex(&UG(events), (void**) &events, &position[0]) == SUCCESS;
-		zend_hash_move_forward_ex(&UG(events), &position[0])) {
+	    (bucket[0] = zend_hash_get_current_data_ex(&UG(events), &position[0]));
+	    zend_hash_move_forward_ex(&UG(events), &position[0])) {
+		HashTable *events = (HashTable*) Z_PTR_P(bucket[0]);
 		for (zend_hash_internal_pointer_reset_ex(events, &position[1]);
-			zend_hash_get_current_data_ex(events, (void**)&uevent, &position[1]) == SUCCESS;
+		     (bucket[1] = zend_hash_get_current_data_ex(events, &position[1]));
 			zend_hash_move_forward_ex(events, &position[1])) {
+			uevent_t *uevent = 
+			  (uevent_t*) Z_PTR_P(bucket[1]);
 			add_next_index_stringl(
-				return_value, Z_STRVAL(uevent->name), Z_STRLEN(uevent->name), 1);
+				return_value, Z_STRVAL(uevent->name), Z_STRLEN(uevent->name));
 		}	
 	}
 } /* }}} */

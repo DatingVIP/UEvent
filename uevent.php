@@ -9,12 +9,7 @@ class Foo {
 /* move args around */
 class FooArgs implements UEventInput, UEventArgs {
 	public function accept() {
-		$this->args = 
-			func_get_args();
-
-		if (count($this->args)) {
-			return true;
-		}
+		return true;
 	}
 	
 	public function get() { return $this->args; }
@@ -23,7 +18,7 @@ class FooArgs implements UEventInput, UEventArgs {
 }
 
 UEvent::addEvent("onFooBar", ["Foo", "bar"], $args = new FooArgs());
-UEvent::addListener("onFooBar", function($qux) {
+UEvent::addListener("onFooBar", function($qux = null) {
 	var_dump($qux);
 }, $args);
 

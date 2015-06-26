@@ -26,6 +26,9 @@ typedef struct _uevent {
 
 /* {{{ */
 #define UEVENT_EVENT_INIT(ev) do { \
+	ev = (uevent_t*) \
+	  emalloc(sizeof(uevent_t)); \
+	\
 	ZVAL_NULL(&(ev)->name); \
 	ZVAL_NULL(&(ev)->handler); \
 	ZVAL_NULL(&(ev)->args); \
@@ -63,28 +66,22 @@ static zend_function* uevent_get_function(zval *call TSRMLS_DC) {
 		case IS_ARRAY: {
 			zend_class_entry *ce;
 			
-			if (!(clazz = zend_hash_index_find_ptr(Z_ARRVAL_P(call), 0)) ||
-			    !(method = zend_hash_index_find_ptr(Z_ARRVAL_P(call), 1))) {
-				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
+			if (!(clazz = zend_hash_index_find(Z_ARRVAL_P(call), 0)) ||
+			    !(method = zend_hash_index_find(Z_ARRVAL_P(call), 1))) {
+				zend_throw_exception_ex(spl_ce_InvalidArgumentException, 0,
 					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), class and method not provided");
 				return NULL;
 			}
 			
-			if ((!clazz || Z_TYPE_P(clazz) != IS_STRING) || (!method || Z_TYPE_P(method) != IS_STRING)) {
-				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
-					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), class or method is invalid");
-				return NULL;
-			}	
-
 			if (!(ce = zend_lookup_class(Z_STR_P(clazz)))) {
-				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
+				zend_throw_exception_ex(spl_ce_InvalidArgumentException, 0,
 					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), class %s cannot be found", Z_STRVAL_P(clazz));
 				return NULL;
 			}
 			
 			lcname = zend_str_tolower_dup(Z_STRVAL_P(method), Z_STRLEN_P(method)+1);
-			if (!(address = zend_hash_str_find_ptr(&(ce)->function_table, lcname, Z_STRLEN_P(method)+1))) {
-				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
+			if (!(address = zend_hash_str_find_ptr(&(ce)->function_table, lcname, Z_STRLEN_P(method)))) {
+				zend_throw_exception_ex(spl_ce_InvalidArgumentException, 0,
 					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), method %s could not be found in %s", 
 						Z_STRVAL_P(method), Z_STRVAL_P(clazz));
 				efree(lcname);
@@ -96,7 +93,7 @@ static zend_function* uevent_get_function(zval *call TSRMLS_DC) {
 		case IS_STRING: {
 			lcname = zend_str_tolower_dup(Z_STRVAL_P(call), Z_STRLEN_P(call)+1);
 			if (!(address = zend_hash_str_find_ptr(EG(function_table), lcname, Z_STRLEN_P(call)+1))) {
-				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
+				zend_throw_exception_ex(spl_ce_InvalidArgumentException, 0,
 					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), the function %s could not be found", 
 						Z_STRVAL_P(call));
 				efree(lcname);
@@ -109,7 +106,7 @@ static zend_function* uevent_get_function(zval *call TSRMLS_DC) {
 			zend_fcall_info_cache fcc;
 
 			if (!zend_is_callable_ex(call, NULL, IS_CALLABLE_CHECK_SILENT, NULL, &fcc, NULL TSRMLS_CC)) {
-				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
+				zend_throw_exception_ex(spl_ce_InvalidArgumentException, 0,
 					"UEvent::addListener expected (string name, closure listener, UEventArgs args = null), the closure passed was not valid");
 				return NULL;
 			}
@@ -119,7 +116,7 @@ static zend_function* uevent_get_function(zval *call TSRMLS_DC) {
 	}
 	
 	if (address->type != ZEND_USER_FUNCTION) {
-		zend_throw_exception_ex(spl_ce_RuntimeException,
+		zend_throw_exception_ex(spl_ce_RuntimeException, 0,
 			"UEvent cannot bind to internal function addresses, it does not seem useful !", Z_STRVAL_PP(clazz));
 		return NULL;
 	}
@@ -149,8 +146,6 @@ static inline zend_bool uevent_add_event(zval *name, zval *callable, zval *input
 	}
 	
 	UEVENT_EVENT_INIT(uevent);
-
-	uevent = (uevent_t*) emalloc(sizeof(uevent_t));
 	uevent->name = *name;
 	zval_copy_ctor(&uevent->name);
 	
@@ -189,9 +184,7 @@ static inline zend_bool uevent_add_listener(zval *name, zval *handler, zval *arg
 	HashTable *listeners = NULL;
 	
 	UEVENT_EVENT_INIT(uevent);
-  
-	uevent = (uevent_t*) emalloc(sizeof(uevent_t));
-	uevent->name = *name;
+  	uevent->name = *name;
 	zval_copy_ctor
 		(&uevent->name);
 	uevent->handler = *handler;
@@ -238,13 +231,13 @@ static inline uevent_t *uevent_get_listener(HashTable *listeners, HashPosition *
 } /* }}} */
 
 /* {{{ */
-static inline zend_bool uevent_accept(uevent_t *event, void **top, int stacked TSRMLS_DC) {
+static inline zend_bool uevent_accept(uevent_t *event, void *top, int stacked TSRMLS_DC) {
 	zend_fcall_info fci;
 	zend_fcall_info_cache fcc;
 	zval arguments;
-	void **bottom;
+	void *bottom;
 	zval callable;
-	zval *retval = NULL;
+	zval retval;
 	zend_bool accept = 0;
 	
 	if (Z_TYPE(event->args) != IS_OBJECT) {
@@ -259,33 +252,33 @@ static inline zend_bool uevent_accept(uevent_t *event, void **top, int stacked T
 	add_next_index_string(&callable, "accept");
 	
 	if (zend_fcall_info_init(&callable, 0, &fci, &fcc, NULL, NULL TSRMLS_CC) == SUCCESS) {
-		fci.retval = retval;
+		fci.retval = &retval;
 		
-		if (stacked) {
-			bottom = zend_vm_stack_top(TSRMLS_C);
+		/*if (stacked) {
+			bottom = EG(vm_stack_top);
 		
-			EG(argument_stack)->top = top + 1;
+			EG(vm_stack)->top = top + 1;
 		
 			if (zend_copy_parameters_array(stacked, &arguments TSRMLS_CC) == SUCCESS) {
 				zend_fcall_info_args(&fci, &arguments TSRMLS_CC);
 			}
-		}
+		}*/
 		
 		zend_call_function(&fci, &fcc TSRMLS_CC);
 		
-		if (stacked) {
-			EG(argument_stack)->top = bottom;
+		/*if (stacked) {
+			EG(vm_stack_top) = bottom;
 			
 			zend_fcall_info_args_clear(&fci, 1);
-		}
+		}*/
 		
-		if (retval) {
+		if (Z_TYPE(retval) != IS_UNDEF) {
 #if PHP_VERSION_ID >= 50600
-			accept = zend_is_true(retval TSRMLS_CC);
+			accept = zend_is_true(&retval TSRMLS_CC);
 #else
-			accept = zend_is_true(retval);
+			accept = zend_is_true(&retval);
 #endif
-			zval_ptr_dtor(&retval);
+			zval_dtor(&retval);
 		}			
 	}
 	
@@ -312,7 +305,7 @@ static inline zend_bool uevent_verify_listener(zend_function *listener, zend_fun
 	zend_arg_info *info[2] = {NULL, NULL};
 	
 	if (address->common.num_args) {
-		zend_uint arg = 0;
+		uint32_t arg = 0;
 		
 		if ((!listener->common.num_args) ||
 			(listener->common.num_args != address->common.num_args)) {
@@ -340,11 +333,11 @@ static inline zend_bool uevent_verify_listener(zend_function *listener, zend_fun
 static inline void uevent_invoke(uevent_t *listener, zend_function *address TSRMLS_DC) {
 	zend_fcall_info fci;
 	zend_fcall_info_cache fcc;
-	zval *retval = NULL;
+	zval retval;
 	zval *argval = NULL;
 	
 	if (zend_fcall_info_init(&listener->handler, 0, &fci, &fcc, NULL, NULL TSRMLS_CC) == SUCCESS) {
-		fci.retval_ptr_ptr = &retval;
+		fci.retval = &retval;
 
 		if (!uevent_verify_listener(fcc.function_handler, address TSRMLS_CC)) {
 			return;	
@@ -353,8 +346,8 @@ static inline void uevent_invoke(uevent_t *listener, zend_function *address TSRM
 		if (Z_TYPE(listener->args) == IS_OBJECT) {
 			zval *object = &listener->args;
 			if (zend_call_method_with_0_params(
-				&object,
-				Z_OBJCE(listener->args), NULL, "get", &argval)) {
+				object,
+				Z_OBJCE(listener->args), NULL, "get", argval)) {
 				zend_fcall_info_args(
 					&fci, argval TSRMLS_CC);
 			}
@@ -362,11 +355,11 @@ static inline void uevent_invoke(uevent_t *listener, zend_function *address TSRM
 
 		zend_call_function(&fci, &fcc TSRMLS_CC);
 
-		if (retval)
-			zval_ptr_dtor(&retval);
+		if (Z_TYPE(retval) != IS_UNDEF)
+			zval_dtor(&retval);
 		
 		if (argval)
-			zval_ptr_dtor(&argval);
+			zval_ptr_dtor(argval);
 		
 		zend_fcall_info_args_clear(&fci, 1);
 	}
@@ -377,22 +370,23 @@ static inline void uevent_execute(zend_execute_data *execute_data TSRMLS_DC) {
 #define EEX(el) (execute_data)->el
 	HashTable *events, *listeners;
 	uevent_t *event,   *listener;
-	HashPosition        position[2] = {NULL, NULL};
+	HashPosition        position[2];
 	void              **top = NULL;
 	int                 stacked = 0;
-	zend_function      *address = EEX(function_state).function;
+	zend_function      *address = EEX(func);
+	zend_op_array      *ops = (zend_op_array*) address;
 	
 	zend_executor_function(execute_data TSRMLS_CC);
 	
-	if ((EEX(op_array) && EEX(op_array)->fn_flags & ZEND_ACC_GENERATOR)) {
+	if ((ops && ops->fn_flags & ZEND_ACC_GENERATOR)) {
 		/* cannot fire events in generators, too messy ... */
 		return;
 	}
 	
-	top = zend_vm_stack_top(TSRMLS_C) - 1;
+	//top = EG(vm_stack_top) - 1;
 
-	if (top)
-		stacked = (int)(zend_uintptr_t) *top;
+	//if (top)
+	//	stacked = (int)(zend_uintptr_t) *top;
 
 	if ((events = uevent_get_events(address, &position[0] TSRMLS_CC))) {
 		while ((event = uevent_get_event(events, &position[0]))) {
