@@ -26,61 +26,67 @@ typedef struct _uevent {
 
 /* {{{ */
 #define UEVENT_EVENT_INIT(ev) do { \
-	ZVAL_NULL(&(ev).name); \
-	ZVAL_NULL(&(ev).handler); \
-	ZVAL_NULL(&(ev).args); \
+	ZVAL_NULL(&(ev)->name); \
+	ZVAL_NULL(&(ev)->handler); \
+	ZVAL_NULL(&(ev)->args); \
 } while (0) /* }}} */
 
 /* {{{ */
-static inline void uevent_event_dtor(void *ev) {
-	uevent_t *uevent = (uevent_t*) ev;
+static inline void uevent_event_dtor(zval *ev) {
+	uevent_t *uevent = 
+	  (uevent_t*) Z_PTR_P(ev);
 	
 	zval_dtor(&uevent->name);
-	zval_dtor(&uevent->handler);	
+	zval_dtor(&uevent->handler);
 	zval_dtor(&uevent->args);
+	
+	efree(uevent);
 } /* }}} */
 
 /* {{{ */
-static inline void uevent_events_dtor(void *evs) {
-	zend_hash_destroy((HashTable*) evs);
+static inline void uevent_events_dtor(zval *evs) {
+	HashTable *events = 
+	  (HashTable*) Z_PTR_P(evs);
+	
+	zend_hash_destroy(events);
+	efree(events);
 } /* }}} */
 
 /* {{{ */
 static zend_function* uevent_get_function(zval *call TSRMLS_DC) {
 	char *lcname = NULL;
-	zval **clazz = NULL;
-	zval **method = NULL;
+	zval *clazz = NULL;
+	zval *method = NULL;
 	zend_function *address;
 	
 	switch (Z_TYPE_P(call)) {
 		case IS_ARRAY: {
-			zend_class_entry **pce;
+			zend_class_entry *ce;
 			
-			if (zend_hash_index_find(Z_ARRVAL_P(call), 0, (void**) &clazz) != SUCCESS ||
-				zend_hash_index_find(Z_ARRVAL_P(call), 1, (void**) &method) != SUCCESS) {
+			if (!(clazz = zend_hash_index_find_ptr(Z_ARRVAL_P(call), 0)) ||
+			    !(method = zend_hash_index_find_ptr(Z_ARRVAL_P(call), 1))) {
 				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
 					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), class and method not provided");
 				return NULL;
 			}
 			
-			if ((!clazz || Z_TYPE_PP(clazz) != IS_STRING) ||
-				(!method || Z_TYPE_PP(method) != IS_STRING)) {
+			if ((!clazz || Z_TYPE_P(clazz) != IS_STRING) || (!method || Z_TYPE_P(method) != IS_STRING)) {
 				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
 					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), class or method is invalid");
 				return NULL;
 			}	
 
-			if (zend_lookup_class(Z_STRVAL_PP(clazz), Z_STRLEN_PP(clazz), &pce TSRMLS_CC) != SUCCESS) {
+			if (!(ce = zend_lookup_class(Z_STR_P(clazz)))) {
 				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
-					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), class %s cannot be found", Z_STRVAL_PP(clazz));
+					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), class %s cannot be found", Z_STRVAL_P(clazz));
 				return NULL;
 			}
 			
-			lcname = zend_str_tolower_dup(Z_STRVAL_PP(method), Z_STRLEN_PP(method)+1);
-			if (zend_hash_find(&(*pce)->function_table, lcname, Z_STRLEN_PP(method)+1, (void**)&address) != SUCCESS) {
+			lcname = zend_str_tolower_dup(Z_STRVAL_P(method), Z_STRLEN_P(method)+1);
+			if (!(address = zend_hash_str_find_ptr(&(ce)->function_table, lcname, Z_STRLEN_P(method)+1))) {
 				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
 					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), method %s could not be found in %s", 
-						Z_STRVAL_PP(method), Z_STRVAL_PP(clazz));
+						Z_STRVAL_P(method), Z_STRVAL_P(clazz));
 				efree(lcname);
 				return NULL;
 			}
@@ -89,7 +95,7 @@ static zend_function* uevent_get_function(zval *call TSRMLS_DC) {
 		
 		case IS_STRING: {
 			lcname = zend_str_tolower_dup(Z_STRVAL_P(call), Z_STRLEN_P(call)+1);
-			if (zend_hash_find(EG(function_table), lcname, Z_STRLEN_P(call)+1, (void**)&address) != SUCCESS) {
+			if (!(address = zend_hash_str_find_ptr(EG(function_table), lcname, Z_STRLEN_P(call)+1))) {
 				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
 					"UEvent::addEvent expected (string name, callable call, UEventInput input = null), the function %s could not be found", 
 						Z_STRVAL_P(call));
@@ -101,8 +107,8 @@ static zend_function* uevent_get_function(zval *call TSRMLS_DC) {
 		
 		case IS_OBJECT: {
 			zend_fcall_info_cache fcc;
-			
-			if (!zend_is_callable_ex(call, NULL, IS_CALLABLE_CHECK_SILENT, NULL, NULL, &fcc, NULL TSRMLS_CC)) {
+
+			if (!zend_is_callable_ex(call, NULL, IS_CALLABLE_CHECK_SILENT, NULL, &fcc, NULL TSRMLS_CC)) {
 				zend_throw_exception_ex(spl_ce_InvalidArgumentException,
 					"UEvent::addListener expected (string name, closure listener, UEventArgs args = null), the closure passed was not valid");
 				return NULL;
@@ -124,10 +130,7 @@ static zend_function* uevent_get_function(zval *call TSRMLS_DC) {
 /* {{{ */
 static inline HashTable *uevent_get_events(zend_function *function, HashPosition *position TSRMLS_DC) {
 	HashTable *events;
-	if (zend_hash_index_find(
-			&UG(events), 
-			(zend_ulong) function, 
-			(void**) &events) != SUCCESS) {
+	if (!(events = zend_hash_index_find_ptr(&UG(events), (zend_ulong) function))) {
 		return NULL;
 	}
 	if (position)
@@ -137,44 +140,42 @@ static inline HashTable *uevent_get_events(zend_function *function, HashPosition
 
 /* {{{ */
 static inline zend_bool uevent_add_event(zval *name, zval *callable, zval *input TSRMLS_DC) {
-	uevent_t uevent;
+	uevent_t *uevent;
 	HashTable *events;
 	zend_function *address = uevent_get_function(callable TSRMLS_CC);
-	
-	UEVENT_EVENT_INIT(uevent);
-	
+		
 	if (!address) {
 		return 0;
 	}
 	
-	uevent.name = *name;
-	zval_copy_ctor(&uevent.name);
+	UEVENT_EVENT_INIT(uevent);
+
+	uevent = (uevent_t*) emalloc(sizeof(uevent_t));
+	uevent->name = *name;
+	zval_copy_ctor(&uevent->name);
+	
 	if (input) {
-		uevent.args = *input;
-		zval_copy_ctor(&uevent.args);
+		uevent->args = *input;
+		zval_copy_ctor(&uevent->args);
 	}
 
-	if (zend_hash_index_find(&UG(events), (zend_ulong) address, (void**) &events) != SUCCESS) {
-		HashTable evtable;
-
-		zend_hash_init(&evtable, 8, NULL, uevent_event_dtor, 0);
-		zend_hash_index_update(
-			&UG(events),
-			(zend_ulong) address, 
-			(void**)&evtable, sizeof(HashTable), 
-			(void**)&events);
+	if (!(events = zend_hash_index_find_ptr(&UG(events), (zend_ulong) address))) {
+		events = (HashTable*) emalloc(sizeof(HashTable));
+		
+		zend_hash_init(events, 8, NULL, uevent_event_dtor, 0);
+		zend_hash_index_update_ptr(
+			&UG(events), (zend_ulong) address, events);
 	}
 	
-	return (zend_hash_next_index_insert(events, (void**) &uevent, sizeof(uevent_t), NULL) == SUCCESS);
+	return (zend_hash_next_index_insert_ptr(events, uevent) == SUCCESS);
 } /* }}} */
 
 /* {{{ */
 static inline HashTable *uevent_get_listeners(uevent_t *event, HashPosition *position TSRMLS_DC) {
 	HashTable *listeners;
-	if(zend_hash_find(
-		&UG(listeners), 
-		Z_STRVAL(event->name), Z_STRLEN(event->name), 
-		(void**)&listeners) != SUCCESS) {
+	if(!(listeners = zend_hash_str_find_ptr(
+		&UG(listeners),
+		Z_STRVAL(event->name), Z_STRLEN(event->name)))) {
 		return NULL;
 	}
 	if (position)
@@ -184,57 +185,56 @@ static inline HashTable *uevent_get_listeners(uevent_t *event, HashPosition *pos
 
 /* {{{ */
 static inline zend_bool uevent_add_listener(zval *name, zval *handler, zval *args TSRMLS_DC) {
-	uevent_t uevent;
+	uevent_t *uevent;
 	HashTable *listeners = NULL;
 	
 	UEVENT_EVENT_INIT(uevent);
-
-	uevent.name = *name;
+  
+	uevent = (uevent_t*) emalloc(sizeof(uevent_t));
+	uevent->name = *name;
 	zval_copy_ctor
-		(&uevent.name);
-	uevent.handler = *handler;
-	zval_copy_ctor(&uevent.handler);
+		(&uevent->name);
+	uevent->handler = *handler;
+	zval_copy_ctor(&uevent->handler);
 	if (args) {
-		uevent.args = *args;
-		zval_copy_ctor(&uevent.args);
+		uevent->args = *args;
+		zval_copy_ctor(&uevent->args);
 	}
 
-	if (zend_hash_find(&UG(listeners), Z_STRVAL_P(name), Z_STRLEN_P(name), (void**) &listeners) != SUCCESS) {
-		HashTable ltable;
-
-		zend_hash_init(&ltable, 8, NULL, uevent_event_dtor, 0);
-		zend_hash_update(
+	if (!(listeners = zend_hash_str_find_ptr(&UG(listeners), Z_STRVAL_P(name), Z_STRLEN_P(name)))) {
+		listeners = (HashTable*) emalloc(sizeof(HashTable));
+		zend_hash_init(listeners, 8, NULL, uevent_event_dtor, 0);
+		zend_hash_str_update_ptr(
 			&UG(listeners),
 			Z_STRVAL_P(name), Z_STRLEN_P(name),
-			(void**)&ltable, sizeof(HashTable),
-			(void**)&listeners);
+			listeners);
 	}
 
-	return (zend_hash_next_index_insert(listeners, (void**) &uevent, sizeof(uevent_t), NULL) == SUCCESS);
+	return (zend_hash_next_index_insert_ptr(listeners, uevent) == SUCCESS);
 } /* }}} */
 
 /* {{{ */
 static inline uevent_t *uevent_get_event(HashTable *events, HashPosition *position) {
-	uevent_t *event;
-	if (zend_hash_get_current_data_ex(
-		events, 
-		(void**)&event, position) != SUCCESS) {
+	zval *bucket;
+	
+	if (!(bucket = zend_hash_get_current_data_ex(events, position))) {
 		return NULL;
 	}
 	zend_hash_move_forward_ex(events, position);
-	return event;
+	
+	return (uevent_t*) Z_PTR_P(bucket);
 } /* }}} */
 
 /* {{{ */
 static inline uevent_t *uevent_get_listener(HashTable *listeners, HashPosition *position) {
-	uevent_t *listener;
-	if (zend_hash_get_current_data_ex(	
-		listeners, 
-		(void**)&listener, position) != SUCCESS) {
+	zval *bucket;
+	
+	if (!(bucket = zend_hash_get_current_data_ex(listeners, position))) {
 		return NULL;
 	}
 	zend_hash_move_forward_ex(listeners, position);
-	return listener;
+	
+	return (uevent_t*) Z_PTR_P(bucket);
 } /* }}} */
 
 /* {{{ */
@@ -256,10 +256,10 @@ static inline zend_bool uevent_accept(uevent_t *event, void **top, int stacked T
 	
 	add_next_index_zval(&callable, &event->args);
 	Z_ADDREF(event->args);
-	add_next_index_string(&callable, "accept", 1);
+	add_next_index_string(&callable, "accept");
 	
 	if (zend_fcall_info_init(&callable, 0, &fci, &fcc, NULL, NULL TSRMLS_CC) == SUCCESS) {
-		fci.retval_ptr_ptr = &retval;
+		fci.retval = retval;
 		
 		if (stacked) {
 			bottom = zend_vm_stack_top(TSRMLS_C);
