@@ -21,7 +21,6 @@
 typedef struct _uevent {
 	zval               name;
 	zval               handler;
-	zval               args;
 } uevent_t; /* }}} */
 
 /* {{{ */
@@ -31,7 +30,6 @@ typedef struct _uevent {
 	\
 	ZVAL_NULL(&(ev)->name); \
 	ZVAL_NULL(&(ev)->handler); \
-	ZVAL_NULL(&(ev)->args); \
 } while (0) /* }}} */
 
 /* {{{ */
@@ -41,7 +39,6 @@ static inline void uevent_event_dtor(zval *ev) {
 	
 	zval_dtor(&uevent->name);
 	zval_dtor(&uevent->handler);
-	zval_dtor(&uevent->args);
 	
 	efree(uevent);
 } /* }}} */
