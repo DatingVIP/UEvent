@@ -47,7 +47,7 @@ float(3.33)
 
 API
 ===
-*Then names of things and what not ...*
+*The names of things and what not ...*
 
 ```php
 <?php
