@@ -32,7 +32,7 @@
 #include "zend_interfaces.h"
 #include "php_uevent.h"
 
-typedef void (*zend_executor) (zend_execute_data * TSRMLS_DC);
+typedef void (*zend_executor) (zend_execute_data *);
 
 zend_executor zend_executor_function = NULL;
 
@@ -57,7 +57,7 @@ PHP_METHOD(UEvent, addEvent) {
 	zval *call = NULL;
 	zval *input = NULL;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "zz", &name, &call) != SUCCESS) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "zz", &name, &call) != SUCCESS) {
 		return;
 	}
 
@@ -152,7 +152,7 @@ PHP_MINIT_FUNCTION(uevent)
 	ZEND_INIT_MODULE_GLOBALS(uevent, php_uevent_globals_ctor, NULL);
 	
 	INIT_CLASS_ENTRY(ce, "UEvent", uevent_methods);
-	UEvent_ce = zend_register_internal_class(&ce TSRMLS_CC);
+	UEvent_ce = zend_register_internal_class(&ce);
 	
 	zend_executor_function = zend_execute_ex;
 	zend_execute_ex        = uevent_execute;
