@@ -6,24 +6,14 @@ class Foo {
 	}
 }
 
-/* move args around */
-class FooArgs implements UEventInput, UEventArgs {
-	public function accept() {
-		return true;
-	}
-	
-	public function get() { return $this->args; }
-	
-	protected $args;
-}
-
-UEvent::addEvent("onFooBar", ["Foo", "bar"], $args = new FooArgs());
+UEvent::addEvent("onFooBar", ["Foo", "bar"]);
 UEvent::addListener("onFooBar", function($qux = null) {
-	var_dump($qux);
-}, $args);
+	echo "in listener\n";
+	var_dump(func_get_args());
+});
 
 Foo::bar(new stdClass(__FILE__));
 
 $foo = new Foo();
-$foo->bar(__FILE__);
+$foo->bar(__FILE__, __FILE__);
 ?>

@@ -51,29 +51,29 @@ static void php_uevent_globals_ctor(zend_uevent_globals *ug)
 {}
 /* }}} */
 
-/* {{{ proto boolean UEvent::addEvent(string name, callable where [, UEventInput input = null]) */
+/* {{{ proto boolean UEvent::addEvent(string name, callable where) */
 PHP_METHOD(UEvent, addEvent) {
 	zval *name = NULL;
 	zval *call = NULL;
 	zval *input = NULL;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "zz|O", &name, &call, &input, UEventInput_ce) != SUCCESS) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "zz", &name, &call) != SUCCESS) {
 		return;
 	}
 
 	if (!name || Z_TYPE_P(name) != IS_STRING) {
 		zend_throw_exception_ex(spl_ce_InvalidArgumentException,
-			"UEvent::addEvent expected (string name, callable call, UEventInput input = null), name is not a string");
+			"UEvent::addEvent expected (string name, callable call), name is not a string");
 		return;
 	}
 
 	if (!call) {
 		zend_throw_exception_ex(spl_ce_InvalidArgumentException,
-			"UEvent::addEvent expected (string name, callable call, UEventInput input = null), call was not provided");
+			"UEvent::addEvent expected (string name, callable call), call was not provided");
 		return;
 	}
 
-	RETURN_BOOL(uevent_add_event(name, call, input TSRMLS_CC));
+	RETURN_BOOL(uevent_add_event(name, call));
 } /* }}} */
 
 /* {{{ proto array UEvent::getEvents() */
@@ -102,30 +102,28 @@ PHP_METHOD(UEvent, getEvents) {
 	}
 } /* }}} */
 
-/* {{{ proto boolean UEvent::addListener(string name, Closure handler [, UEventArgs args]) */
+/* {{{ proto boolean UEvent::addListener(string name, Closure handler) */
 PHP_METHOD(UEvent, addListener) {
 	zval *name = NULL;
 	zval *handler = NULL;
-	zval *args = NULL;
 	
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "zO|O", &name, &handler, zend_ce_closure, &args, UEventArgs_ce) != SUCCESS) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "zO", &name, &handler, zend_ce_closure) != SUCCESS) {
 		return;
 	}
 	
 	if (!name || Z_TYPE_P(name) != IS_STRING) {
 		zend_throw_exception_ex(spl_ce_InvalidArgumentException,
-			"UEvent::addListener expected (string name, Closure listener [, UEventArgs args])");
+			"UEvent::addListener expected (string name, Closure listener)");
 		return;
 	}
 
-	RETURN_BOOL(uevent_add_listener(name, handler, args TSRMLS_CC));
+	RETURN_BOOL(uevent_add_listener(name, handler));
 } /* }}} */
 
 /* {{{ */
 ZEND_BEGIN_ARG_INFO_EX(uevent_addevent_arginfo, 0, 0, 2)
 	ZEND_ARG_INFO(0, name)
 	ZEND_ARG_INFO(0, call)
-	ZEND_ARG_OBJ_INFO(0, input, UEventInput, 1)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(uevent_getevents_arginfo, 0, 0, 0)
@@ -134,7 +132,6 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_INFO_EX(uevent_addlistener_arginfo, 0, 0, 2)
 	ZEND_ARG_INFO(0, name)
 	ZEND_ARG_OBJ_INFO(0, handler, Closure, 0)
-	ZEND_ARG_OBJ_INFO(0, input,   UEventArgs, 1)
 ZEND_END_ARG_INFO()
 /* }}} */
  
@@ -143,31 +140,6 @@ static zend_function_entry uevent_methods[] = {
 	PHP_ME(UEvent, addEvent, uevent_addevent_arginfo, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	PHP_ME(UEvent, getEvents, uevent_getevents_arginfo, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	PHP_ME(UEvent, addListener, uevent_addlistener_arginfo, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
-	PHP_FE_END
-}; /* }}} */
-
-/* {{{ */
-ZEND_BEGIN_ARG_INFO_EX(ueventargs_get_arginfo, 0, 0, 0)
-ZEND_END_ARG_INFO()
-
-ZEND_BEGIN_ARG_INFO_EX(ueventargs_set_arginfo, 0, 0, 0)
-	ZEND_ARG_INFO(0, params)
-ZEND_END_ARG_INFO()
-/* }}} */
-
-/* {{{ */
-zend_function_entry ueventargs_methods[] = {
-	PHP_ABSTRACT_ME(UEventArgs, get, ueventargs_get_arginfo)
-	PHP_FE_END
-}; /* }}} */
-
-/* {{{ */
-ZEND_BEGIN_ARG_INFO_EX(ueventinput_accept_arginfo, 0, 0, 0)
-ZEND_END_ARG_INFO() /* }}} */
-
-/* {{{ */
-zend_function_entry ueventinput_methods[] = {
-	PHP_ABSTRACT_ME(UEventInput, accept, ueventinput_accept_arginfo)
 	PHP_FE_END
 }; /* }}} */
 
@@ -181,14 +153,6 @@ PHP_MINIT_FUNCTION(uevent)
 	
 	INIT_CLASS_ENTRY(ce, "UEvent", uevent_methods);
 	UEvent_ce = zend_register_internal_class(&ce TSRMLS_CC);
-	
-	INIT_CLASS_ENTRY(ce, "UEventArgs", ueventargs_methods);
-	UEventArgs_ce = zend_register_internal_class(&ce TSRMLS_CC);
-	UEventArgs_ce->ce_flags |= ZEND_ACC_INTERFACE;
-	
-	INIT_CLASS_ENTRY(ce, "UEventInput", ueventinput_methods);
-	UEventInput_ce = zend_register_internal_class(&ce TSRMLS_CC);
-	UEventInput_ce->ce_flags |= ZEND_ACC_INTERFACE;
 	
 	zend_executor_function = zend_execute_ex;
 	zend_execute_ex        = uevent_execute;
