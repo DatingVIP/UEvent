@@ -1,19 +1,17 @@
 <?php
-/* dummy */
-class Foo {
-	public static function bar($qux = null) {
-		return __METHOD__;
-	}
+class foo {
+	public static function bar() {}
+	/* ... */
 }
 
-UEvent::addEvent("onFooBar", ["Foo", "bar"]);
-UEvent::addListener("onFooBar", function($qux = null) {
-	echo "in listener\n";
-	var_dump(func_get_args());
+UEvent::addEvent("foo.bar", ["Foo", "bar"]);
+UEvent::addListener("foo.bar", function(array $array = [], float $float){
+	echo "hello foo::bar\n";
+	var_dump($array, 
+		 $float);
 });
 
-Foo::bar(new stdClass(__FILE__));
+/* ... */
 
-$foo = new Foo();
-$foo->bar(__FILE__, __FILE__);
+foo::bar(["first", "array"], 1.23);
 ?>

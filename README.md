@@ -13,18 +13,22 @@ The following code demonstrates how to attach events to the invokation of method
 ```php
 <?php
 class foo {
-	public static function bar() {}
+	public static function bar(array $array, float $float) {
+	  /* ... */
+	}
 	/* ... */
 }
 
 UEvent::addEvent("foo.bar", ["Foo", "bar"]);
-UEvent::addListener("foo.bar", function(array $array = []){
+UEvent::addListener("foo.bar", function(array $array = [], float $float){
 	echo "hello foo::bar\n";
+	var_dump($array, 
+		 $float);
 });
 
 /* ... */
 
-foo::bar();
+foo::bar(["first", "array"], 1.23);
 ?>
 ```
 
@@ -34,51 +38,6 @@ Will output:
 hello foo::bar
 ```
 
-Trigger events based on arguments
-=================================
-*A bit more complicated ...*
-
-The following code demonstrates how to use ```UEventInput``` in combination with ```UEventArgs``` to capture
-and pass the argument stack from call to listener
-
-```php
-<?php
-class foo {
-	public static function bar($foo) {}
-	/* ... */
-}
-
-/* Will capture arguments at calltime and trigger event based on arguments
-	also stores argument stack for passing to listener ... so ... voodoo ... */
-class EventArgs implements UEventInput, UEventArgs {
-	public function accept() {
-		$this->args = func_get_args();
-		if (count($this->args)) {
-			return ($this->args[0] == "trigger");
-		}
-	}
-
-	public function get() { return $this->args;	}
-
-	protected $args;
-}
-
-$arguments = new EventArgs();
-UEvent::addEvent("foo.bar", ["Foo", "bar"], $arguments);
-UEvent::addListener("foo.bar", function($argv){
-	echo "Foo::bar({$argv}) called\n";
-}, $arguments);
-
-foo::bar('trigger');
-foo::bar('no-trigger');
-?>
-```
-
-Will output
-
-```
-Foo::bar(trigger) called
-```
 
 API
 ===
@@ -86,44 +45,25 @@ API
 
 ```php
 <?php
-interface UEventInput {
-/**
-* Shall recieve the argument stack at call time
-* @returns boolean
-* Note: use func_get_args
-*/
-	public function accept();
-}
-
-interface UEventArgs {
-/**
-* Shall return arguments for event listener invocation
-* @returns array
-*/
-	public function get();
-}
-
 class UEvent {
 /**
-* Shall call $handler($args->get()) when $name is fired by uevent
-* @param string name
-* @param Closure handler
-* @returns boolean
-* @throws \RuntimeException
-*/
-	public static function addListener($name, Closure $handler, UEventArgs $args = null);
-
-/**
-* Shall create an event of the given $name:
-*  $name shall be fired when $input->accept() returns true
+* Shall create an event of the given $name at $call location:
 * @param string name
 * @param callable call
-* @param UEventInput input
 * @returns boolean
 * @throws \RuntimeException
 */
-	public static function addEvent($name, callable $call, UEventInput $input = null);
+	public static function addEvent($event, callable $call);
 
+/**
+* Shall add a listening function to execute when the named event is fired
+* @param string event
+* @param Closure listener
+* @returns boolean
+* @throws \RuntimeException
+*/
+	public static function addListener($name, Closure $listener);
+	
 /**
 * Shall return the names of all events
 * @returns array
