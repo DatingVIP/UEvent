@@ -28,7 +28,7 @@ UEvent::addListener("foo.bar", function(array $array = [], float $float){
 
 /* ... */
 
-foo::bar(["first", "array"], 1.23);
+foo::bar(["first", "second"], 3.33);
 ?>
 ```
 
@@ -36,8 +36,14 @@ Will output:
 
 ```
 hello foo::bar
+array(2) {
+  [0]=>
+  string(5) "first"
+  [1]=>
+  string(6) "second"
+}
+float(3.33)
 ```
-
 
 API
 ===

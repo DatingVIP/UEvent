@@ -13,5 +13,5 @@ UEvent::addListener("foo.bar", function(array $array = [], float $float){
 
 /* ... */
 
-foo::bar(["first", "array"], 1.23);
+foo::bar(["first", "second"], 3.23);
 ?>
