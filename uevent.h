@@ -1,6 +1,6 @@
 /*
   +----------------------------------------------------------------------+
-  | PHP Version 5                                                        |
+  | PHP Version 7                                                        |
   +----------------------------------------------------------------------+
   | Copyright (c) 1997-2013 The PHP Group                                |
   +----------------------------------------------------------------------+
@@ -19,41 +19,43 @@
 #define HAVE_UEVENT_H
 /* {{{ */
 typedef struct _uevent {
-	zval               name;
-	zval               handler;
+	zend_function   *binding;
+	HashTable       listeners;
+	zend_object	std;	
 } uevent_t; /* }}} */
 
-/* {{{ */
-#define UEVENT_EVENT_INIT(ev) do { \
-	ev = (uevent_t*) \
-	  emalloc(sizeof(uevent_t)); \
-	\
-	ZVAL_NULL(&(ev)->name); \
-	ZVAL_NULL(&(ev)->handler); \
-} while (0) /* }}} */
+#define php_uevent_fetch(o) ((uevent_t*) (((char*)Z_OBJ_P(o)) - XtOffsetOf(uevent_t, std)))
+#define php_uevent_from(o)  (uevent_t*)((char*)(o) - XtOffsetOf(uevent_t, std))
+#define php_uevent_chain(r, o) ZVAL_ZVAL(r, o, 1, 0)
 
 /* {{{ */
-static inline void uevent_event_dtor(zval *ev) {
-	uevent_t *uevent = 
-	  (uevent_t*) Z_PTR_P(ev);
+static inline void uevent_copy_ctor(zval *listener) {
+	zval_copy_ctor(listener);
+} /* }}} *
+
+/* {{{ */
+static inline zend_object* uevent_event_create(zend_class_entry *ce) {
+	uevent_t *uevent = (uevent_t*) emalloc(sizeof(uevent_t));
 	
-	zval_dtor(&uevent->name);
-	zval_dtor(&uevent->handler);
+	zend_object_std_init(&uevent->std, ce);
+	zend_hash_init(&uevent->listeners, 8, NULL, ZVAL_PTR_DTOR, 0);
+	uevent->std.handlers = &UEvent_handlers;
 	
+	return &uevent->std;
+} /* }}} */
+
+/* {{{ */
+static inline void uevent_event_free(zend_object *zobject) {
+	uevent_t *uevent = php_uevent_from(zobject);
+
+	zend_hash_destroy(&uevent->listeners);
+	zend_object_std_dtor(&uevent->std);
+
 	efree(uevent);
 } /* }}} */
 
 /* {{{ */
-static inline void uevent_events_dtor(zval *evs) {
-	HashTable *events = 
-	  (HashTable*) Z_PTR_P(evs);
-	
-	zend_hash_destroy(events);
-	efree(events);
-} /* }}} */
-
-/* {{{ */
-static zend_function* uevent_get_function(zval *call) {
+static zend_function* uevent_get_binding(zval *call) {
 	char *lcname = NULL;
 	zval *clazz = NULL;
 	zval *method = NULL;
@@ -66,20 +68,20 @@ static zend_function* uevent_get_function(zval *call) {
 			if (!(clazz = zend_hash_index_find(Z_ARRVAL_P(call), 0)) ||
 			    !(method = zend_hash_index_find(Z_ARRVAL_P(call), 1))) {
 				zend_throw_exception_ex(spl_ce_InvalidArgumentException, 0,
-					"UEvent::addEvent expected (string name, callable call), class and method not provided");
+					"failed to find binding, class and method not provided");
 				return NULL;
 			}
 			
 			if (!(ce = zend_lookup_class(Z_STR_P(clazz)))) {
 				zend_throw_exception_ex(spl_ce_InvalidArgumentException, 0,
-					"UEvent::addEvent expected (string name, callable call), class %s cannot be found", Z_STRVAL_P(clazz));
+					"failed to find binding, class %s cannot be found", Z_STRVAL_P(clazz));
 				return NULL;
 			}
 			
 			lcname = zend_str_tolower_dup(Z_STRVAL_P(method), Z_STRLEN_P(method)+1);
 			if (!(address = zend_hash_str_find_ptr(&(ce)->function_table, lcname, Z_STRLEN_P(method)))) {
 				zend_throw_exception_ex(spl_ce_InvalidArgumentException, 0,
-					"UEvent::addEvent expected (string name, callable call), method %s could not be found in %s", 
+					"failed to find binding, method %s could not be found in %s", 
 						Z_STRVAL_P(method), Z_STRVAL_P(clazz));
 				efree(lcname);
 				return NULL;
@@ -91,7 +93,7 @@ static zend_function* uevent_get_function(zval *call) {
 			lcname = zend_str_tolower_dup(Z_STRVAL_P(call), Z_STRLEN_P(call)+1);
 			if (!(address = zend_hash_str_find_ptr(EG(function_table), lcname, Z_STRLEN_P(call)))) {
 				zend_throw_exception_ex(spl_ce_InvalidArgumentException, 0,
-					"UEvent::addEvent expected (string name, callable call), the function %s could not be found", 
+					"failed to find binding, the function %s could not be found", 
 						Z_STRVAL_P(call));
 				efree(lcname);
 				return NULL;
@@ -104,7 +106,7 @@ static zend_function* uevent_get_function(zval *call) {
 
 			if (!zend_is_callable_ex(call, NULL, IS_CALLABLE_CHECK_SILENT, NULL, &fcc, NULL)) {
 				zend_throw_exception_ex(spl_ce_InvalidArgumentException, 0,
-					"UEvent::addListener expected (string name, closure listener), the closure passed was not valid");
+					"failed to find binding, the closure passed was not valid");
 				return NULL;
 			}
 			
@@ -114,7 +116,7 @@ static zend_function* uevent_get_function(zval *call) {
 	
 	if (address->type != ZEND_USER_FUNCTION) {
 		zend_throw_exception_ex(spl_ce_RuntimeException, 0,
-			"UEvent cannot bind to internal function addresses, it does not seem useful !", Z_STRVAL_PP(clazz));
+			"cannot bind to internal function addresses, it does not seem useful !", Z_STRVAL_PP(clazz));
 		return NULL;
 	}
 	
@@ -133,68 +135,6 @@ static inline HashTable *uevent_get_events(zend_function *function, HashPosition
 } /* }}} */
 
 /* {{{ */
-static inline zend_bool uevent_add_event(zval *name, zval *callable) {
-	uevent_t *uevent;
-	HashTable *events;
-	zend_function *address = uevent_get_function(callable);
-
-	if (!address) {
-		return 0;
-	}
-	
-	UEVENT_EVENT_INIT(uevent);
-	uevent->name = *name;
-	zval_copy_ctor(&uevent->name);
-
-	if (!(events = zend_hash_index_find_ptr(&UG(events), (zend_ulong) address))) {
-		events = (HashTable*) emalloc(sizeof(HashTable));
-		
-		zend_hash_init(events, 8, NULL, uevent_event_dtor, 0);
-		zend_hash_index_update_ptr(
-			&UG(events), (zend_ulong) address, events);
-	}
-	
-	return (zend_hash_next_index_insert_ptr(events, uevent) == uevent);
-} /* }}} */
-
-/* {{{ */
-static inline HashTable *uevent_get_listeners(uevent_t *event, HashPosition *position) {
-	HashTable *listeners;
-	if(!(listeners = zend_hash_str_find_ptr(
-		&UG(listeners),
-		Z_STRVAL(event->name), Z_STRLEN(event->name)))) {
-		return NULL;
-	}
-	if (position)
-		zend_hash_internal_pointer_reset_ex(listeners, position);
-	return listeners;
-} /* }}} */
-
-/* {{{ */
-static inline zend_bool uevent_add_listener(zval *name, zval *handler) {
-	uevent_t *uevent;
-	HashTable *listeners = NULL;
-	
-	UEVENT_EVENT_INIT(uevent);
-  	uevent->name = *name;
-	zval_copy_ctor
-		(&uevent->name);
-	uevent->handler = *handler;
-	zval_copy_ctor(&uevent->handler);
-
-	if (!(listeners = zend_hash_str_find_ptr(&UG(listeners), Z_STRVAL_P(name), Z_STRLEN_P(name)))) {
-		listeners = (HashTable*) emalloc(sizeof(HashTable));
-		zend_hash_init(listeners, 8, NULL, uevent_event_dtor, 0);
-		zend_hash_str_update_ptr(
-			&UG(listeners),
-			Z_STRVAL_P(name), Z_STRLEN_P(name),
-			listeners);
-	}
-
-	return (zend_hash_next_index_insert_ptr(listeners, uevent) == uevent);
-} /* }}} */
-
-/* {{{ */
 static inline uevent_t *uevent_get_event(HashTable *events, HashPosition *position) {
 	zval *bucket;
 	
@@ -203,19 +143,19 @@ static inline uevent_t *uevent_get_event(HashTable *events, HashPosition *positi
 	}
 	zend_hash_move_forward_ex(events, position);
 	
-	return (uevent_t*) Z_PTR_P(bucket);
+	return php_uevent_fetch(bucket);
 } /* }}} */
 
 /* {{{ */
-static inline uevent_t *uevent_get_listener(HashTable *listeners, HashPosition *position) {
+static inline zval *uevent_get_listener(uevent_t *uevent, HashPosition *position) {
 	zval *bucket;
 	
-	if (!(bucket = zend_hash_get_current_data_ex(listeners, position))) {
+	if (!(bucket = zend_hash_get_current_data_ex(&uevent->listeners, position))) {
 		return NULL;
 	}
-	zend_hash_move_forward_ex(listeners, position);
+	zend_hash_move_forward_ex(&uevent->listeners, position);
 	
-	return (uevent_t*) Z_PTR_P(bucket);
+	return bucket;
 } /* }}} */
 
 /* {{{ */
@@ -260,13 +200,12 @@ static inline zend_bool uevent_verify_listener(zend_function *listener, zend_fun
 } /* }}} */
 
 /* {{{ */
-static inline void uevent_invoke(uevent_t *listener, zend_function *address, int nparams, zval *params) {
+static inline void uevent_invoke(zval *listener, zend_function *address, int nparams, zval *params) {
 	zend_fcall_info fci;
 	zend_fcall_info_cache fcc;
 	zval retval;
-	zval *argval = NULL;
 	
-	if (zend_fcall_info_init(&listener->handler, 0, &fci, &fcc, NULL, NULL) == SUCCESS) {
+	if (zend_fcall_info_init(listener, 0, &fci, &fcc, NULL, NULL) == SUCCESS) {
 		fci.retval = &retval;
 
 		if (!uevent_verify_listener(fcc.function_handler, address)) {
@@ -280,76 +219,53 @@ static inline void uevent_invoke(uevent_t *listener, zend_function *address, int
 
 		if (Z_TYPE(retval) != IS_UNDEF)
 			zval_dtor(&retval);
-		
-		if (argval)
-			zval_ptr_dtor(argval);
-		
-		//zend_fcall_info_args_clear(&fci, 1);
 	}
 } /* }}} */
 
 /* {{{ */
 static inline void uevent_execute(zend_execute_data *execute_data) {
-#define EEX(el) (execute_data)->el
-	HashTable *events, 
-		  *listeners;
-	uevent_t  *event,  
-		  *listener;
+#define ARGS(action) do {\
+	int nparam = 0; \
+	zval *param = params; \
+	\
+	while (nparam < nparams) { \
+		if (Z_REFCOUNTED_P(param)) { \
+			action(param); \
+		} \
+		nparam++; \
+		param++; \
+	}\
+} while(0)
+
 	HashPosition        position[2];
-	zend_function      *address = EEX(func);
-	zend_op_array      *ops = (zend_op_array*) address;
-	zval               *params = ZEND_CALL_ARG(EG(current_execute_data), 1),
-			   *stack;
-	int                 nparams = ZEND_CALL_NUM_ARGS(EG(current_execute_data));
-	
-	if (nparams) {
-	  int nparam = 0;
-	  zval *param = params;
-	  
-	  stack = (zval*) ecalloc(nparams, sizeof(zval));
-	  memcpy(
-	      stack, params, sizeof(zval) * nparams);
-	  
-	  while (nparam < nparams) {
-	    if (Z_REFCOUNTED_P(param)) {
-	      Z_ADDREF_P(param);
-	    }
-	    nparam++;
-	    param++;
-	  }
-	}
+	zend_function      *address = execute_data->func;
+	int                 nparams = ZEND_CALL_NUM_ARGS(execute_data);
+	zval               *params = ZEND_CALL_ARG(execute_data, 1);
+	HashTable 	   *events = uevent_get_events(address, &position[0]);
+
+	if (nparams && events) ARGS(Z_ADDREF_P);
 	
 	zend_executor_function(execute_data);
-	
-	if ((ops && ops->fn_flags & ZEND_ACC_GENERATOR)) {
+
+	if (address->common.fn_flags & ZEND_ACC_GENERATOR) {
 		/* cannot fire events in generators, too messy ... */
 		goto cleanup;
 	}
-	
-	if ((events = uevent_get_events(address, &position[0]))) {
+
+	if (events) {
+		uevent_t	*event;
+		zval		*listener;
+		
 		while ((event = uevent_get_event(events, &position[0]))) {
-			if ((listeners = uevent_get_listeners(event, &position[1]))) {
-				while ((listener = uevent_get_listener(listeners, &position[1]))) {
-					uevent_invoke(listener, address, nparams, params);
-				}
+			while ((listener = uevent_get_listener(event, &position[1]))) {
+				uevent_invoke(listener, address, nparams, params);
 			}
+			position[1] = 0;
 		}
 	}
 
 cleanup:
-	if (nparams) {
-	  int nparam = 0;
-	  zval *param = stack;
-	  while (nparam < nparams) {
-	    if (Z_REFCOUNTED_P(param)) {
-	      zval_ptr_dtor(param);
-	    }
-	    nparam++;
-	    param++;
-	  }
-	  
-	  efree(stack);
-	}
-#undef EEX
+	if (nparams && events) ARGS(zval_ptr_dtor);
+#undef ARGS
 } /* }}} */
 #endif

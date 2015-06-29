@@ -1,24 +1,22 @@
 --TEST--
-Check for basic uevent functionality
+Check basic
 --SKIPIF--
 <?php include "skip-if.inc" ?>
 --FILE--
 <?php
 class Foo {
-	public static function bar($arg) {
+	public static function bar(string $arg) {
 		return $arg;
 	}
 }
 
-var_dump(UEvent::addEvent("my.event", ["Foo", "bar"]));
-var_dump(UEvent::addListener("my.event", function($arg){
+$event = new UEvent([Foo::class, "bar"]);
+$event->add(function(string $arg){
 	echo "fired";
-}));
+});
 
 Foo::bar("arg");
 ?>
 --EXPECTF--
-bool(true)
-bool(true)
 fired
 

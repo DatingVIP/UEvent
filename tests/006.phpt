@@ -1,21 +1,24 @@
 --TEST--
-Check for UEvent::addEvent on protected method
+Check listeners reset
 --SKIPIF--
 <?php include "skip-if.inc" ?>
 --FILE--
 <?php
-class Foo {
-	protected function bar($arg) {
+class foo {
+	public static function bar(string $arg) {
 		return $arg;
 	}
+	/* ... */
 }
 
-UEvent::addEvent("my.event", ["Foo", "bar"]); # don't care if protected
-var_dump(UEvent::getEvents());
+$event = new UEvent([Foo::class, "bar"]);
+$event->add(function(string $arg){
+	var_dump($arg);
+});
+$event->reset();
+var_dump($event->list());
 ?>
---EXPECTF--
-array(1) {
-  [0]=>
-  string(8) "my.event"
+--EXPECT--
+array(0) {
 }
 

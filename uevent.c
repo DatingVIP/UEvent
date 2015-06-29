@@ -1,6 +1,6 @@
 /*
   +----------------------------------------------------------------------+
-  | PHP Version 5                                                        |
+  | PHP Version 7                                                        |
   +----------------------------------------------------------------------+
   | Copyright (c) 1997-2013 The PHP Group                                |
   +----------------------------------------------------------------------+
@@ -37,6 +37,7 @@ typedef void (*zend_executor) (zend_execute_data *);
 zend_executor zend_executor_function = NULL;
 
 zend_class_entry *UEvent_ce = NULL;
+zend_object_handlers UEvent_handlers;
 
 ZEND_DECLARE_MODULE_GLOBALS(uevent);
 
@@ -49,94 +50,106 @@ static void php_uevent_globals_ctor(zend_uevent_globals *ug)
 {}
 /* }}} */
 
-/* {{{ proto boolean UEvent::addEvent(string name, callable where) */
-PHP_METHOD(UEvent, addEvent) {
-	zval *name = NULL;
-	zval *call = NULL;
-
-	if (zend_parse_parameters(ZEND_NUM_ARGS(), "zz", &name, &call) != SUCCESS) {
+/* {{{ proto UEvent UEvent::__construct(callable binding) */
+PHP_METHOD(UEvent, __construct) {
+	uevent_t	*uevent = php_uevent_fetch(getThis());
+	zval            *callable = NULL;
+	HashTable       *bindings;
+	
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "z", &callable) != SUCCESS) {
 		return;
 	}
-
-	if (!name || Z_TYPE_P(name) != IS_STRING) {
-		zend_throw_exception_ex(spl_ce_InvalidArgumentException,
-			"UEvent::addEvent expected (string name, callable call), name is not a string");
-		return;
+	
+	uevent->binding = uevent_get_binding(callable);
+	
+	if (!(bindings = zend_hash_index_find_ptr(&UG(events), (zend_ulong) uevent->binding))) {
+		bindings = 
+			(HashTable*) emalloc(sizeof(HashTable));
+		zend_hash_init(bindings, 8, NULL, ZVAL_PTR_DTOR, 0);
+		zend_hash_index_update_ptr(
+			&UG(events), (zend_ulong) uevent->binding, bindings);
 	}
-
-	if (!call) {
-		zend_throw_exception_ex(spl_ce_InvalidArgumentException,
-			"UEvent::addEvent expected (string name, callable call), call was not provided");
-		return;
-	}
-
-	RETURN_BOOL(uevent_add_event(name, call));
+	
+	zend_hash_next_index_insert(bindings, &EX(This));
 } /* }}} */
 
-/* {{{ proto array UEvent::getEvents() */
-PHP_METHOD(UEvent, getEvents) {
-	HashPosition position[2];
-	zval         *bucket[2];
+/* {{{ proto UEvent UEvent::add(Closure listener) */
+PHP_METHOD(UEvent, add) {
+	uevent_t	*uevent = php_uevent_fetch(getThis());
+	zval            *listener;
+	
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "O", &listener, zend_ce_closure) != SUCCESS) {
+		return;
+	}
+	
+	if (zend_hash_next_index_insert(&uevent->listeners, listener)) {
+		Z_ADDREF_P(listener);
+	}
+	
+	php_uevent_chain(return_value, &EX(This));
+} /* }}} */
+
+/* {{{ proto array UEvent::list(void) */
+PHP_METHOD(UEvent, list) {
+	uevent_t *uevent = php_uevent_fetch(getThis());
 	
 	if (zend_parse_parameters_none() != SUCCESS) {
 		return;
 	}
 	
 	array_init(return_value);
-
-	for (zend_hash_internal_pointer_reset_ex(&UG(events), &position[0]);
-	    (bucket[0] = zend_hash_get_current_data_ex(&UG(events), &position[0]));
-	    zend_hash_move_forward_ex(&UG(events), &position[0])) {
-		HashTable *events = (HashTable*) Z_PTR_P(bucket[0]);
-		for (zend_hash_internal_pointer_reset_ex(events, &position[1]);
-		     (bucket[1] = zend_hash_get_current_data_ex(events, &position[1]));
-			zend_hash_move_forward_ex(events, &position[1])) {
-			uevent_t *uevent = 
-			  (uevent_t*) Z_PTR_P(bucket[1]);
-			add_next_index_stringl(
-				return_value, Z_STRVAL(uevent->name), Z_STRLEN(uevent->name));
-		}	
-	}
+	zend_hash_copy(
+		Z_ARRVAL_P(return_value), &uevent->listeners, uevent_copy_ctor);
 } /* }}} */
 
-/* {{{ proto boolean UEvent::addListener(string name, Closure handler) */
-PHP_METHOD(UEvent, addListener) {
-	zval *name = NULL;
-	zval *handler = NULL;
+/* {{{ proto bool UEvent::remove(integer index) */
+PHP_METHOD(UEvent, remove) {
+	uevent_t   *uevent = php_uevent_fetch(getThis());
+	zend_ulong listener;
 	
-	if (zend_parse_parameters(ZEND_NUM_ARGS(), "zO", &name, &handler, zend_ce_closure) != SUCCESS) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS(), "l", &listener) != SUCCESS) {
 		return;
 	}
 	
-	if (!name || Z_TYPE_P(name) != IS_STRING) {
-		zend_throw_exception_ex(spl_ce_InvalidArgumentException,
-			"UEvent::addListener expected (string name, Closure listener)");
-		return;
-	}
+	RETVAL_BOOL(zend_hash_index_del(&uevent->listeners, listener) == SUCCESS);
+} /* }}} */
 
-	RETURN_BOOL(uevent_add_listener(name, handler));
+/* {{{ proto void UEvent::reset(void) */
+PHP_METHOD(UEvent, reset) {
+	uevent_t *uevent = php_uevent_fetch(getThis());
+	
+	if (zend_parse_parameters_none() != SUCCESS) {
+		return;
+	}
+	
+	zend_hash_clean(&uevent->listeners);
 } /* }}} */
 
 /* {{{ */
-ZEND_BEGIN_ARG_INFO_EX(uevent_addevent_arginfo, 0, 0, 2)
-	ZEND_ARG_INFO(0, name)
-	ZEND_ARG_INFO(0, call)
+ZEND_BEGIN_ARG_INFO_EX(uevent_no_arginfo, 0, 0, 0)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_INFO_EX(uevent_getevents_arginfo, 0, 0, 0)
+ZEND_BEGIN_ARG_INFO_EX(uevent_construct_arginfo, 0, 0, 1)
+	ZEND_ARG_INFO(0, binding)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_INFO_EX(uevent_addlistener_arginfo, 0, 0, 2)
-	ZEND_ARG_INFO(0, name)
-	ZEND_ARG_OBJ_INFO(0, handler, Closure, 0)
+ZEND_BEGIN_ARG_INFO_EX(uevent_add_arginfo, 0, 0, 1)
+	ZEND_ARG_OBJ_INFO(0, listener, Closure, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_INFO_EX(uevent_remove_arginfo, 0, 0, 1)
+	ZEND_ARG_TYPE_INFO(0, index, IS_LONG, 0)
 ZEND_END_ARG_INFO()
 /* }}} */
  
 /* {{{ */
 static zend_function_entry uevent_methods[] = {
-	PHP_ME(UEvent, addEvent, uevent_addevent_arginfo, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
-	PHP_ME(UEvent, getEvents, uevent_getevents_arginfo, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
-	PHP_ME(UEvent, addListener, uevent_addlistener_arginfo, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	PHP_ME(UEvent, __construct,	uevent_construct_arginfo, 	ZEND_ACC_PUBLIC)
+	PHP_ME(UEvent, add,		uevent_add_arginfo, 		ZEND_ACC_PUBLIC)
+	PHP_ME(UEvent, remove,		uevent_remove_arginfo, 		ZEND_ACC_PUBLIC)
+	PHP_ME(UEvent, list,		uevent_no_arginfo, 		ZEND_ACC_PUBLIC)
+	PHP_ME(UEvent, reset,		uevent_no_arginfo, 		ZEND_ACC_PUBLIC)
+
 	PHP_FE_END
 }; /* }}} */
 
@@ -150,6 +163,13 @@ PHP_MINIT_FUNCTION(uevent)
 	
 	INIT_CLASS_ENTRY(ce, "UEvent", uevent_methods);
 	UEvent_ce = zend_register_internal_class(&ce);
+	UEvent_ce->create_object = uevent_event_create;
+	
+	memcpy(&UEvent_handlers, 
+	       zend_get_std_object_handlers(), 
+	       sizeof(zend_object_handlers));
+	UEvent_handlers.free_obj = uevent_event_free;
+	UEvent_handlers.offset = XtOffsetOf(uevent_t, std);
 	
 	zend_executor_function = zend_execute_ex;
 	zend_execute_ex        = uevent_execute;
@@ -168,12 +188,16 @@ PHP_MSHUTDOWN_FUNCTION(uevent)
 }
 /* }}} */
 
+static inline void php_uevent_unbind(zval *p) {
+	zend_hash_destroy((HashTable*) Z_PTR_P(p));
+	efree(Z_PTR_P(p));
+}
+
 /* {{{ PHP_RINIT_FUNCTION
  */
 PHP_RINIT_FUNCTION(uevent)
 {
-	zend_hash_init(&UG(events), 8, NULL, uevent_events_dtor, 0);
-	zend_hash_init(&UG(listeners), 8, NULL, uevent_events_dtor, 0);
+	zend_hash_init(&UG(events), 8, NULL, php_uevent_unbind, 0);
 
 	return SUCCESS;
 }
@@ -184,7 +208,6 @@ PHP_RINIT_FUNCTION(uevent)
 PHP_RSHUTDOWN_FUNCTION(uevent)
 {
 	zend_hash_destroy(&UG(events));
-	zend_hash_destroy(&UG(listeners));
 
 	return SUCCESS;
 }

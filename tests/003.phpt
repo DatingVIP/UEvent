@@ -1,5 +1,5 @@
 --TEST--
-Check for removal of listener
+Check duplicate bindings
 --SKIPIF--
 <?php include "skip-if.inc" ?>
 --FILE--
@@ -15,7 +15,14 @@ $event = new UEvent([Foo::class, "bar"]);
 $event->add(function(string $arg){
 	var_dump($arg);
 });
-var_dump($event->remove(0));
+
+$nev = new UEvent([Foo::class, "bar"]);
+$nev->add(function(string $arg){
+	var_dump($arg);
+});
+
+Foo::bar("arg");
 ?>
 --EXPECT--
-bool(true)
+string(3) "arg"
+string(3) "arg"

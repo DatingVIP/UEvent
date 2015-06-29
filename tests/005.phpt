@@ -1,21 +1,36 @@
 --TEST--
-Check for UEvent::addEvent on non-static method
+Check listener list
 --SKIPIF--
 <?php include "skip-if.inc" ?>
 --FILE--
 <?php
-class Foo {
-	public function bar($arg) {
+class foo {
+	public static function bar(string $arg) {
 		return $arg;
 	}
+	/* ... */
 }
 
-UEvent::addEvent("my.event", ["Foo", "bar"]); # don't care if not static
-var_dump(UEvent::getEvents());
+$event = new UEvent([Foo::class, "bar"]);
+$event->add(function(string $arg){
+	var_dump($arg);
+});
+var_dump($event->list());
+var_dump($event->remove(0));
+var_dump($event->list());
 ?>
---EXPECTF--
+--EXPECT--
 array(1) {
   [0]=>
-  string(8) "my.event"
+  object(Closure)#2 (1) {
+    ["parameter"]=>
+    array(1) {
+      ["$arg"]=>
+      string(10) "<required>"
+    }
+  }
+}
+bool(true)
+array(0) {
 }
 

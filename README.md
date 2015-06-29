@@ -8,7 +8,7 @@ Example
 =======
 *How ...*
 
-The following code demonstrates how to attach events to the invokation of methods or functions:
+The following code demonstrates usage (see tests for more info):
 
 ```php
 <?php
@@ -19,8 +19,8 @@ class foo {
 	/* ... */
 }
 
-UEvent::addEvent("foo.bar", ["Foo", "bar"]);
-UEvent::addListener("foo.bar", function(array $array = [], float $float){
+$event = new UEvent([Foo::class, "bar"]);
+$event->add(function(array $array = [], float $float){
 	echo "hello foo::bar\n";
 	var_dump($array, 
 		 $float);
@@ -52,29 +52,15 @@ API
 ```php
 <?php
 class UEvent {
-/**
-* Shall create an event of the given $name at $call location:
-* @param string name
-* @param callable call
-* @returns boolean
-* @throws \RuntimeException
-*/
-	public static function addEvent($name, callable $call);
+	public function __construct(callable binding);
 
-/**
-* Shall add a listening function to execute when the named event is fired
-* @param string event
-* @param Closure listener
-* @returns boolean
-* @throws \RuntimeException
-*/
-	public static function addListener($name, Closure $listener);
-	
-/**
-* Shall return the names of all events
-* @returns array
-*/
-	public static function getEvents();
+	public function add(Closure listener);
+
+	public function remove(integer index);
+
+	public function reset(void);
+
+	public function fetch(void);
 }
 ?>
 ```

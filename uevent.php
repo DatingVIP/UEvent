@@ -1,17 +1,23 @@
 <?php
 class foo {
-	public static function bar() {}
+	public static function bar(string $arg) {
+		return $arg;
+	}
 	/* ... */
 }
 
-UEvent::addEvent("foo.bar", ["Foo", "bar"]);
-UEvent::addListener("foo.bar", function(array $array = [], float $float){
-	echo "hello foo::bar\n";
-	var_dump($array, 
-		 $float);
+$event = new UEvent([Foo::class, "bar"]);
+$event
+	->add(function(string $arg){
+		echo "listened for $arg\n";
+	})->add(function(string $arg){
+		echo "also listened for $arg\n";
+	});
+
+$nev = new UEvent([Foo::class, "bar"]);
+$nev->add(function(string $arg){
+	echo "new event listened for $arg too\n";
 });
 
-/* ... */
-
-foo::bar(["first", "second"], 3.23);
+Foo::bar("arg");
 ?>

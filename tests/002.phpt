@@ -1,21 +1,22 @@
 --TEST--
-Check for removal of listener
+Check arguments
 --SKIPIF--
 <?php include "skip-if.inc" ?>
 --FILE--
 <?php
-class foo {
+class Foo {
 	public static function bar(string $arg) {
 		return $arg;
 	}
-	/* ... */
 }
 
 $event = new UEvent([Foo::class, "bar"]);
 $event->add(function(string $arg){
 	var_dump($arg);
 });
-var_dump($event->remove(0));
+
+Foo::bar("arg");
 ?>
 --EXPECT--
-bool(true)
+string(3) "arg"
+
