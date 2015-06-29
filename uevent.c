@@ -71,6 +71,33 @@ PHP_METHOD(UEvent, __construct) {
 	}
 	
 	zend_hash_next_index_insert(bindings, &EX(This));
+	Z_ADDREF(EX(This));
+} /* }}} */
+
+/* {{{ proto void UEvent::__destruct(void) */
+PHP_METHOD(UEvent, __destruct) {
+	uevent_t *uevent = php_uevent_fetch(getThis());
+	HashTable *bindings;
+	
+	if (zend_parse_parameters_none() != SUCCESS) {
+		return;
+	}
+	
+	if ((bindings = zend_hash_index_find_ptr(&UG(events), (zend_ulong) uevent->binding))) {
+		zval *event;
+		HashPosition position;
+		zend_ulong index;
+		
+		for (zend_hash_internal_pointer_reset_ex(bindings, &position);
+		     event = zend_hash_get_current_data_ex(bindings, &position);
+		     zend_hash_move_forward_ex(bindings, &position)) {
+			if (php_uevent_fetch(event) == uevent) {
+				if (zend_hash_get_current_key_ex(bindings, NULL, &index, &position) == HASH_KEY_IS_LONG) {
+					zend_hash_index_del(bindings, index);
+				}
+			}
+		}
+	}
 } /* }}} */
 
 /* {{{ proto UEvent UEvent::add(Closure listener) */
@@ -149,7 +176,7 @@ static zend_function_entry uevent_methods[] = {
 	PHP_ME(UEvent, remove,		uevent_remove_arginfo, 		ZEND_ACC_PUBLIC)
 	PHP_ME(UEvent, list,		uevent_no_arginfo, 		ZEND_ACC_PUBLIC)
 	PHP_ME(UEvent, reset,		uevent_no_arginfo, 		ZEND_ACC_PUBLIC)
-
+	PHP_ME(UEvent, __destruct,	uevent_no_arginfo,		ZEND_ACC_PUBLIC)
 	PHP_FE_END
 }; /* }}} */
 

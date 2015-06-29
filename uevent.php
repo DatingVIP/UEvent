@@ -13,7 +13,7 @@ $event
 	})->add(function(string $arg){
 		echo "also listened for $arg\n";
 	});
-
+	
 $nev = new UEvent([Foo::class, "bar"]);
 $nev->add(function(string $arg){
 	echo "new event listened for $arg too\n";
