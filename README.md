@@ -60,7 +60,7 @@ class UEvent {
 
 	public function reset(void);
 
-	public function fetch(void);
+	public function list(void);
 }
 ?>
 ```
