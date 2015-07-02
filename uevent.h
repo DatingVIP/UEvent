@@ -50,8 +50,6 @@ static inline void uevent_event_free(zend_object *zobject) {
 
 	zend_hash_destroy(&uevent->listeners);
 	zend_object_std_dtor(&uevent->std);
-
-	efree(uevent);
 } /* }}} */
 
 /* {{{ */
